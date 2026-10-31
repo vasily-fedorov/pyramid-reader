@@ -3203,6 +3203,45 @@ if (typeof module === "object") {
       margin: 8px 0 0;
     }
     .pyr-sent[hidden] { display: none; }
+    #pyr-settings {
+      position: absolute;
+      inset: 0;
+      background: var(--bg);
+      padding: 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 5;
+    }
+    #pyr-settings h2 { font-size: 15px; margin: 0 0 4px; }
+    #pyr-settings label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+    #pyr-settings input[type="text"], #pyr-settings input[type="password"], #pyr-settings input[type="number"] {
+      font: inherit;
+      color: var(--fg);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 6px 8px;
+    }
+    #pyr-settings .pyr-row { display: flex; gap: 10px; }
+    #pyr-settings .pyr-row label { flex: 1 1 0; }
+    #pyr-settings .pyr-key-row { display: flex; gap: 6px; }
+    #pyr-settings .pyr-key-row input { flex: 1 1 auto; min-width: 0; }
+    #pyr-settings button {
+      font: inherit;
+      color: var(--fg);
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 4px 8px;
+      cursor: pointer;
+    }
+    #pyr-settings button:hover { border-color: var(--accent); color: var(--accent); }
+    #pyr-settings .pyr-check { flex-direction: row; align-items: center; gap: 8px; color: var(--fg); }
+    #pyr-settings .pyr-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+    #pyr-settings .pyr-hint { color: var(--muted); font-size: 11.5px; margin: 0; }
+    #pyr-settings .pyr-actions { display: flex; gap: 8px; margin-top: 4px; }
   `;
 
   const PANEL_HTML = `
@@ -3556,8 +3595,165 @@ if (typeof module === "object") {
   // Init
   // ---------------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------------
+  // Settings and triggers
+  // ---------------------------------------------------------------------------
+
+  const PRESETS = [
+    { id: 'deepseek', apiBase: 'https://api.deepseek.com', model: 'deepseek-flash' },
+    { id: 'openai', apiBase: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+    { id: 'openrouter', apiBase: 'https://openrouter.ai/api/v1', model: 'deepseek/deepseek-chat' },
+    { id: 'ollama', apiBase: 'http://localhost:11434/v1', model: 'llama3.1' },
+  ];
+
+  let settingsDialog = null;
+  let initialized = false;
+
+  function fillSettings(dialog, config) {
+    dialog.querySelector('[name="apiBase"]').value = config.apiBase;
+    dialog.querySelector('[name="apiKey"]').value = config.apiKey;
+    dialog.querySelector('[name="model"]').value = config.model;
+    dialog.querySelector('[name="maxChars"]').value = String(config.maxChars);
+    dialog.querySelector('[name="maxTokens"]').value = String(config.maxTokens);
+    dialog.querySelector('[name="temperature"]').value = String(config.temperature);
+    dialog.querySelector('[name="timeoutSec"]').value = String(config.timeoutSec);
+    dialog.querySelector('[name="autoExtract"]').checked = Boolean(config.autoExtract);
+  }
+
+  function readSettings(dialog) {
+    return {
+      apiBase: dialog.querySelector('[name="apiBase"]').value,
+      apiKey: dialog.querySelector('[name="apiKey"]').value,
+      model: dialog.querySelector('[name="model"]').value,
+      maxChars: dialog.querySelector('[name="maxChars"]').value,
+      maxTokens: dialog.querySelector('[name="maxTokens"]').value,
+      temperature: dialog.querySelector('[name="temperature"]').value,
+      timeoutSec: dialog.querySelector('[name="timeoutSec"]').value,
+      autoExtract: dialog.querySelector('[name="autoExtract"]').checked,
+    };
+  }
+
+  function openSettings() {
+    const refs = ensureHost();
+
+    if (settingsDialog) {
+      fillSettings(settingsDialog, loadConfig());
+      return;
+    }
+
+    const dialog = document.createElement('div');
+    dialog.id = 'pyr-settings';
+    dialog.innerHTML = `
+      <h2>Настройки</h2>
+      <label>Адрес API
+        <input name="apiBase" type="text" spellcheck="false" />
+      </label>
+      <label>Ключ API
+        <span class="pyr-key-row">
+          <input name="apiKey" type="password" autocomplete="off" spellcheck="false" />
+          <button type="button" data-action="reveal">показать</button>
+        </span>
+      </label>
+      <label>Модель
+        <input name="model" type="text" spellcheck="false" />
+      </label>
+      <div class="pyr-row">
+        <label>Макс. символов <input name="maxChars" type="number" min="1000" max="400000" /></label>
+        <label>Макс. токенов <input name="maxTokens" type="number" min="256" max="32000" /></label>
+      </div>
+      <div class="pyr-row">
+        <label>Температура <input name="temperature" type="number" min="0" max="2" step="0.1" /></label>
+        <label>Таймаут, с <input name="timeoutSec" type="number" min="10" max="600" /></label>
+      </div>
+      <label class="pyr-check"><input name="autoExtract" type="checkbox" /> Использовать Readability</label>
+      <div class="pyr-presets">
+        <button type="button" data-preset="deepseek">DeepSeek</button>
+        <button type="button" data-preset="openai">OpenAI</button>
+        <button type="button" data-preset="openrouter">OpenRouter</button>
+        <button type="button" data-preset="ollama">Ollama</button>
+      </div>
+      <p class="pyr-hint">Для Ollama запустите сервер с OLLAMA_ORIGINS=* и адресом http://localhost:11434/v1.</p>
+      <div class="pyr-actions">
+        <button type="button" data-action="save">Сохранить</button>
+        <button type="button" data-action="close">Закрыть</button>
+      </div>
+    `;
+
+    refs.panel.appendChild(dialog);
+    settingsDialog = dialog;
+
+    fillSettings(dialog, loadConfig());
+
+    dialog.querySelector('button[data-action="save"]').addEventListener('click', () => {
+      saveConfig(readSettings(dialog));
+      closeSettings();
+    });
+    dialog.querySelector('button[data-action="close"]').addEventListener('click', () => closeSettings());
+    dialog.querySelector('button[data-action="reveal"]').addEventListener('click', () => {
+      const input = dialog.querySelector('[name="apiKey"]');
+      input.type = input.type === 'password' ? 'text' : 'password';
+    });
+
+    PRESETS.forEach((preset) => {
+      const button = dialog.querySelector('button[data-preset="' + preset.id + '"]');
+      if (!button) return;
+      button.addEventListener('click', () => {
+        dialog.querySelector('[name="apiBase"]').value = preset.apiBase;
+        dialog.querySelector('[name="model"]').value = preset.model;
+      });
+    });
+  }
+
+  function closeSettings() {
+    if (!settingsDialog) return;
+    settingsDialog.remove();
+    settingsDialog = null;
+  }
+
+  function isInsidePanel(event) {
+    if (!panelRefs) return false;
+    const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+    return path.indexOf(panelRefs.host) !== -1;
+  }
+
+  function isTypingTarget(event) {
+    if (isInsidePanel(event)) return true;
+    const target = event.target;
+    if (!target || target.nodeType !== 1) return false;
+    const tag = target.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable === true;
+  }
+
+  function handleHotkey(event) {
+    const isHotkey = (event.ctrlKey || event.metaKey) && event.shiftKey && event.code === 'KeyP';
+    if (!isHotkey) return;
+    if (isTypingTarget(event)) return;
+    event.preventDefault();
+    if (isPanelOpen()) {
+      closePanel();
+    } else {
+      runPyramid();
+    }
+  }
+
   function init() {
-    /* sections are added by the following tasks */
+    if (initialized) return;
+    initialized = true;
+
+    if (typeof GM_registerMenuCommand === 'function') {
+      GM_registerMenuCommand('Открыть пирамиду', () => runPyramid());
+      GM_registerMenuCommand('Настройки', () => openSettings());
+      GM_registerMenuCommand('Очистить кэш', () => clearCache());
+    }
+
+    onRebuild(() => runPyramid());
+    onCancel(() => {
+      stopActiveRequest();
+      setPanelState('done');
+    });
+    onSettings(() => openSettings());
+
+    document.addEventListener('keydown', handleHotkey, true);
   }
 
   if (globalThis.__PYRAMID_TEST_HOOK__) {
@@ -3617,6 +3813,10 @@ if (typeof module === "object") {
       runPyramid,
       __extractText: extractCurrentText,
       __abortRequest: stopActiveRequest,
+      PRESETS,
+      openSettings,
+      closeSettings,
+      init,
       get __root() {
         return panelRefs ? panelRefs.root : null;
       },
