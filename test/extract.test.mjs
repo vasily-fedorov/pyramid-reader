@@ -67,3 +67,17 @@ test('autoExtract:false skips Readability and still returns text', () => {
   assert.equal(r.usedReadability, false);
   assert.ok(r.text.length > 0);
 });
+
+test('no-article page: navigation is not in the fallback text', () => {
+  const r = extract('no-article.html');
+  assert.doesNotMatch(r.text, /Cart/);
+  assert.doesNotMatch(r.text, /\bHome\b/);
+});
+
+test('code block blank lines are preserved verbatim', () => {
+  const html =
+    '<!doctype html><html><body><article><pre><code class="language-python">def a():\n    return 1\n\n\ndef b():\n    return 2</code></pre></article></body></html>';
+  const h = loadUserscript({ html });
+  const r = h.api.extractArticle(h.document, { autoExtract: false });
+  assert.match(r.text, /def a\(\):\n {4}return 1\n\n\ndef b\(\):/);
+});

@@ -274,6 +274,13 @@
     });
   }
 
+  function stripMarkdownFence(text) {
+    let out = String(text == null ? '' : text);
+    out = out.replace(/^\s*```[a-zA-Z0-9_-]*[ \t]*\r?\n/, '');
+    out = out.replace(/\r?\n?```[ \t]*$/, '');
+    return out;
+  }
+
   function sanitizeHtml(html) {
     const doc = new DOMParser().parseFromString(String(html == null ? '' : html), 'text/html');
     cleanChildren(doc.body);
@@ -2712,7 +2719,6 @@ if (typeof module === "object") {
     text = text.replace(/ *\n */g, '\n');
     text = text.replace(/\n{3,}/g, '\n\n');
     text = text.replace(/\u0000PRE(\d+)\u0000/g, (match, index) => '\n' + preBlocks[Number(index)] + '\n');
-    text = text.replace(/\n{3,}/g, '\n\n');
 
     return text.trim();
   }
@@ -2753,7 +2759,7 @@ if (typeof module === "object") {
       }
     }
 
-    if (!container) container = fallbackContainer(doc);
+    if (!container) container = fallbackContainer(clone);
 
     let text = htmlToPlainText(container);
     const originalLength = text.length;
@@ -2774,6 +2780,24 @@ if (typeof module === "object") {
       short: text.length < SHORT_TEXT_CHARS,
       usedReadability,
     };
+  }
+
+  function buildNote(extracted, autoExtract) {
+    if (!extracted) return '';
+    if (extracted.truncated) {
+      return (
+        'Текст обрезан, отправлено ' +
+        extracted.text.length +
+        ' из ' +
+        extracted.originalLength +
+        ' символов.'
+      );
+    }
+    if (extracted.short) return 'Похоже, это не статья — текст короткий.';
+    if (autoExtract && !extracted.usedReadability) {
+      return 'Readability не выделил статью — отправлен текст страницы.';
+    }
+    return '';
   }
 
   // ---------------------------------------------------------------------------
@@ -3284,7 +3308,7 @@ if (typeof module === "object") {
     host.style.zIndex = '2147483646';
     host.style.pointerEvents = 'none';
 
-    const root = host.attachShadow({ mode: 'open' });
+    const root = host.attachShadow({ mode: 'closed' });
     root.innerHTML = '<style>' + PANEL_CSS + '</style>' + PANEL_HTML;
 
     document.body.appendChild(host);
@@ -3351,6 +3375,7 @@ if (typeof module === "object") {
     const refs = ensureHost();
     refs.host.setAttribute('hidden', '');
     refs.panel.removeAttribute('data-open');
+    closeSettings();
     stopActiveRequest();
   }
 
@@ -3372,9 +3397,29 @@ if (typeof module === "object") {
     refs.rebuild.disabled = busy;
   }
 
+  function captureViewState(container) {
+    const open = [];
+    const all = container.querySelectorAll('details');
+    for (let index = 0; index < all.length; index += 1) {
+      if (all[index].open) open.push(index);
+    }
+    return { scrollTop: container.scrollTop || 0, open };
+  }
+
+  function applyViewState(container, state) {
+    if (!state) return;
+    const all = container.querySelectorAll('details');
+    state.open.forEach((index) => {
+      if (all[index]) all[index].open = true;
+    });
+    container.scrollTop = state.scrollTop;
+  }
+
   function setPanelHtml(html) {
     const refs = ensureHost();
+    const state = captureViewState(refs.content);
     refs.content.innerHTML = html;
+    applyViewState(refs.content, state);
   }
 
   function getFocusValue() {
@@ -3456,7 +3501,8 @@ if (typeof module === "object") {
 
   let activeRequest = null;
   let activeTimer = null;
-  let lastExtractedText = '';
+  let pendingRender = null;
+  let runSeq = 0;
 
   function stopActiveRequest() {
     if (activeRequest) {
@@ -3470,6 +3516,10 @@ if (typeof module === "object") {
     if (activeTimer != null) {
       clearInterval(activeTimer);
       activeTimer = null;
+    }
+    if (pendingRender != null) {
+      clearTimeout(pendingRender);
+      pendingRender = null;
     }
   }
 
@@ -3488,14 +3538,16 @@ if (typeof module === "object") {
   function runPyramid(opts) {
     const options = opts || {};
     stopActiveRequest();
+    const token = ++runSeq;
 
     openPanel();
     setPanelState('extracting');
     setPanelNote('');
+    setPanelHtml('');
 
     const config = loadConfig();
     const extracted = currentExtraction();
-    lastExtractedText = extracted.text;
+    if (token !== runSeq) return;
 
     setFooter({
       sent: extracted.text.length,
@@ -3506,20 +3558,14 @@ if (typeof module === "object") {
     });
     setSentTextPreview(extracted.text);
 
-    if (extracted.truncated) {
-      setPanelNote(
-        'Текст обрезан, отправлено ' + extracted.text.length + ' из ' + extracted.originalLength + ' символов.',
-      );
-    } else if (extracted.short) {
-      setPanelNote('Похоже, это не статья — текст короткий.');
-    }
+    setPanelNote(buildNote(extracted, config.autoExtract));
 
     const focus = String(options.focus != null ? options.focus : getFocusValue()).trim();
 
     if (!options.force) {
       const cached = getCached(location.href, extracted.text, focus);
       if (cached) {
-        setPanelHtml(sanitizeHtml(cached.html));
+        setPanelHtml(sanitizeHtml(stripMarkdownFence(cached.html)));
         setPanelState('cached');
         return;
       }
@@ -3527,7 +3573,6 @@ if (typeof module === "object") {
 
     let phase = 'requesting';
     let seconds = 0;
-    let pending = null;
     let accumulated = '';
 
     setPanelState('requesting', { seconds: 0 });
@@ -3538,11 +3583,11 @@ if (typeof module === "object") {
     }, 1000);
 
     function renderNow() {
-      if (pending != null) {
-        clearTimeout(pending);
-        pending = null;
+      if (pendingRender != null) {
+        clearTimeout(pendingRender);
+        pendingRender = null;
       }
-      setPanelHtml(sanitizeHtml(accumulated));
+      setPanelHtml(sanitizeHtml(stripMarkdownFence(accumulated)));
     }
 
     activeRequest = requestCompletion({
@@ -3551,24 +3596,28 @@ if (typeof module === "object") {
       user: buildUserMessage(extracted.text),
 
       onWaiting() {
+        if (token !== runSeq) return;
         phase = 'thinking';
         setPanelState('thinking', { seconds });
       },
 
       onDelta(chunk) {
+        if (token !== runSeq) return;
         accumulated += chunk;
         if (phase !== 'streaming') {
           phase = 'streaming';
           setPanelState('streaming');
         }
-        if (pending != null) return;
-        pending = setTimeout(() => {
-          pending = null;
-          setPanelHtml(sanitizeHtml(accumulated));
+        if (pendingRender != null) return;
+        pendingRender = setTimeout(() => {
+          pendingRender = null;
+          if (token !== runSeq) return;
+          setPanelHtml(sanitizeHtml(stripMarkdownFence(accumulated)));
         }, 200);
       },
 
       onDone(html, usage) {
+        if (token !== runSeq) return;
         stopActiveRequest();
         accumulated = html;
         renderNow();
@@ -3584,6 +3633,7 @@ if (typeof module === "object") {
       },
 
       onError(message) {
+        if (token !== runSeq) return;
         stopActiveRequest();
         showError(message, { settings: true });
         setPanelState('error');
@@ -3610,8 +3660,12 @@ if (typeof module === "object") {
   let initialized = false;
 
   function fillSettings(dialog, config) {
+    const keyInput = dialog.querySelector('[name="apiKey"]');
+    keyInput.value = '';
+    keyInput.placeholder = config.apiKey
+      ? 'ключ сохранён — введите новый, чтобы заменить'
+      : 'ключ не задан';
     dialog.querySelector('[name="apiBase"]').value = config.apiBase;
-    dialog.querySelector('[name="apiKey"]').value = config.apiKey;
     dialog.querySelector('[name="model"]').value = config.model;
     dialog.querySelector('[name="maxChars"]').value = String(config.maxChars);
     dialog.querySelector('[name="maxTokens"]').value = String(config.maxTokens);
@@ -3623,7 +3677,6 @@ if (typeof module === "object") {
   function readSettings(dialog) {
     return {
       apiBase: dialog.querySelector('[name="apiBase"]').value,
-      apiKey: dialog.querySelector('[name="apiKey"]').value,
       model: dialog.querySelector('[name="model"]').value,
       maxChars: dialog.querySelector('[name="maxChars"]').value,
       maxTokens: dialog.querySelector('[name="maxTokens"]').value,
@@ -3635,6 +3688,7 @@ if (typeof module === "object") {
 
   function openSettings() {
     const refs = ensureHost();
+    openPanel();
 
     if (settingsDialog) {
       fillSettings(settingsDialog, loadConfig());
@@ -3675,6 +3729,7 @@ if (typeof module === "object") {
       <p class="pyr-hint">Для Ollama запустите сервер с OLLAMA_ORIGINS=* и адресом http://localhost:11434/v1.</p>
       <div class="pyr-actions">
         <button type="button" data-action="save">Сохранить</button>
+        <button type="button" data-action="clearKey">Очистить ключ</button>
         <button type="button" data-action="close">Закрыть</button>
       </div>
     `;
@@ -3685,8 +3740,15 @@ if (typeof module === "object") {
     fillSettings(dialog, loadConfig());
 
     dialog.querySelector('button[data-action="save"]').addEventListener('click', () => {
-      saveConfig(readSettings(dialog));
+      const patch = readSettings(dialog);
+      const typed = dialog.querySelector('[name="apiKey"]').value.trim();
+      if (typed) patch.apiKey = typed;
+      saveConfig(patch);
       closeSettings();
+    });
+    dialog.querySelector('button[data-action="clearKey"]').addEventListener('click', () => {
+      saveConfig({ apiKey: '' });
+      fillSettings(dialog, loadConfig());
     });
     dialog.querySelector('button[data-action="close"]').addEventListener('click', () => closeSettings());
     dialog.querySelector('button[data-action="reveal"]').addEventListener('click', () => {
@@ -3727,6 +3789,7 @@ if (typeof module === "object") {
   function handleHotkey(event) {
     const isHotkey = (event.ctrlKey || event.metaKey) && event.shiftKey && event.code === 'KeyP';
     if (!isHotkey) return;
+    if (!event.isTrusted && !globalThis.__PYRAMID_TEST_HOOK__) return;
     if (isTypingTarget(event)) return;
     event.preventDefault();
     if (isPanelOpen()) {
@@ -3746,7 +3809,7 @@ if (typeof module === "object") {
       GM_registerMenuCommand('Очистить кэш', () => clearCache());
     }
 
-    onRebuild(() => runPyramid());
+    onRebuild(() => runPyramid({ force: true }));
     onCancel(() => {
       stopActiveRequest();
       setPanelState('done');
@@ -3778,6 +3841,7 @@ if (typeof module === "object") {
       clearCache,
       ALLOWED_TAGS,
       DROP_TAGS,
+      stripMarkdownFence,
       sanitizeHtml,
       BASE_PROMPT,
       PROMPT_RULES,
@@ -3788,6 +3852,7 @@ if (typeof module === "object") {
       SHORT_TEXT_CHARS,
       htmlToPlainText,
       extractArticle,
+      buildNote,
       createSseParser,
       extractDelta,
       extractUsage,
@@ -3800,6 +3865,8 @@ if (typeof module === "object") {
       isPanelOpen,
       setPanelState,
       setPanelHtml,
+      captureViewState,
+      applyViewState,
       getFocusValue,
       setFocusValue,
       onRebuild,

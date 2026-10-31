@@ -118,3 +118,50 @@ test('short extracted text shows the not-an-article warning', () => {
   h.api.runPyramid();
   assert.match(h.api.__root.querySelector('#pyr-note').textContent, /не статья/i);
 });
+
+test('rebuild bypasses the cache and calls the API', () => {
+  const { api, captured } = setup();
+  api.init();
+  api.putCached('https://example.com/a', api.__extractText(), '', '<h3>cached</h3>');
+  api.runPyramid();
+  assert.equal(captured.length, 0);
+  api.__root.querySelector('button[data-action="rebuild"]').click();
+  assert.equal(captured.length, 1);
+});
+
+test('a stale throttle timer from an aborted run cannot overwrite the next run', async () => {
+  const { api, captured } = setup();
+  api.putCached('https://example.com/a', api.__extractText(), '', '<h3>B</h3>');
+
+  api.runPyramid({ force: true });
+  captured[0].onprogress({ responseText: sse('<h3>A</h3>') });
+  api.runPyramid();
+  assert.match(api.__root.querySelector('#pyr-content').innerHTML, /B/);
+
+  await new Promise((resolve) => setTimeout(resolve, 320));
+  const html = api.__root.querySelector('#pyr-content').innerHTML;
+  assert.match(html, /B/);
+  assert.doesNotMatch(html, /A/);
+});
+
+test('a markdown code fence from the model is stripped', () => {
+  const { api, captured } = setup();
+  api.runPyramid();
+  const wrapped = '```html\n<h3>📌 Executive Summary</h3><p>ok</p>\n```';
+  captured[0].onload({
+    responseText: `data: ${JSON.stringify({ choices: [{ delta: { content: wrapped } }] })}\n\ndata: [DONE]\n\n`,
+  });
+  const html = api.__root.querySelector('#pyr-content').innerHTML;
+  assert.doesNotMatch(html, /```/);
+  assert.match(html, /Executive Summary/);
+});
+
+test('extraction note priorities', () => {
+  const { api } = loadUserscript();
+  const long = 'x'.repeat(500);
+  assert.match(api.buildNote({ truncated: true, text: 'x', originalLength: 10000, short: false, usedReadability: true }, true), /обрезан/i);
+  assert.match(api.buildNote({ truncated: false, text: 'x', originalLength: 1, short: true, usedReadability: true }, true), /не статья/i);
+  assert.match(api.buildNote({ truncated: false, text: long, originalLength: 500, short: false, usedReadability: false }, true), /Readability/i);
+  assert.equal(api.buildNote({ truncated: false, text: long, originalLength: 500, short: false, usedReadability: true }, true), '');
+  assert.equal(api.buildNote({ truncated: false, text: long, originalLength: 500, short: false, usedReadability: false }, false), '');
+});

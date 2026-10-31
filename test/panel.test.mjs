@@ -10,7 +10,8 @@ test('openPanel mounts a shadow host and closePanel hides it', () => {
   h.api.openPanel();
   const el = host(h);
   assert.ok(el);
-  assert.equal(el.shadowRoot.querySelector('.panel') !== null, true);
+  assert.equal(h.api.__root.querySelector('.panel') !== null, true);
+  assert.equal(el.shadowRoot, null);
   assert.equal(h.api.isPanelOpen(), true);
   h.api.closePanel();
   assert.equal(h.api.isPanelOpen(), false);
@@ -132,4 +133,41 @@ test('panel is a labelled dialog and focuses the input on open', () => {
   assert.equal(panel.getAttribute('role'), 'dialog');
   assert.equal(panel.getAttribute('aria-label'), 'Пирамида знаний');
   assert.equal(h.window.__pyramid.__root.activeElement, q(h, '#pyr-focus'));
+});
+
+test('setPanelHtml keeps open details across a re-render', () => {
+  const h = loadUserscript();
+  h.api.openPanel();
+  const markup = '<details><summary>a</summary><p>1</p></details><details><summary>b</summary><p>2</p></details>';
+  h.api.setPanelHtml(markup);
+  q(h, '#pyr-content').querySelectorAll('details')[1].open = true;
+  h.api.setPanelHtml(markup);
+  const after = q(h, '#pyr-content').querySelectorAll('details');
+  assert.equal(after[1].open, true);
+  assert.equal(after[0].open, false);
+});
+
+test('setPanelHtml restores scroll position after replacing content', () => {
+  const h = loadUserscript();
+  h.api.openPanel();
+  h.api.setPanelHtml('<p>tall</p>');
+  const content = q(h, '#pyr-content');
+  content.scrollTop = 240;
+
+  const proto = h.window.Element.prototype;
+  const descriptor = Object.getOwnPropertyDescriptor(proto, 'innerHTML');
+  Object.defineProperty(content, 'innerHTML', {
+    configurable: true,
+    get() {
+      return descriptor.get.call(content);
+    },
+    set(value) {
+      descriptor.set.call(content, value);
+      content.scrollTop = 0;
+    },
+  });
+
+  h.api.setPanelHtml('<p>taller</p>');
+  assert.equal(content.scrollTop, 240);
+  delete content.innerHTML;
 });

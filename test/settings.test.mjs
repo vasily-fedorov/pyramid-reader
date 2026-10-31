@@ -111,3 +111,66 @@ test('clearing the cache removes only cache entries', () => {
   clear.fn();
   assert.equal(h.api.storageKeys().filter((k) => k.startsWith('pyr.cache.')).length, 0);
 });
+
+test('closed shadow root hides panel internals from page scripts', () => {
+  const h = loadUserscript();
+  h.api.init();
+  h.api.openPanel();
+  const el = h.document.getElementById('ai-pyramid-host');
+  assert.equal(el.shadowRoot, null);
+  assert.ok(h.api.__root);
+});
+
+test('stored api key is not prefilled into the dialog', () => {
+  const h = loadUserscript({ store: { 'pyr.config': { apiKey: 'sk-stored' } } });
+  h.api.init();
+  h.api.openSettings();
+  const dlg = root(h).querySelector('#pyr-settings');
+  const input = dlg.querySelector('input[name="apiKey"]');
+  assert.equal(input.value, '');
+  assert.equal(input.type, 'password');
+  assert.doesNotMatch(h.document.documentElement.outerHTML, /sk-stored/);
+});
+
+test('saving an empty key field keeps the stored key, clear button erases it', () => {
+  const h = loadUserscript({ store: { 'pyr.config': { apiKey: 'sk-stored' } } });
+  h.api.init();
+  h.api.openSettings();
+  root(h).querySelector('#pyr-settings button[data-action="save"]').click();
+  assert.equal(h.api.loadConfig().apiKey, 'sk-stored');
+
+  h.api.openSettings();
+  const dlg = root(h).querySelector('#pyr-settings');
+  dlg.querySelector('input[name="apiKey"]').value = 'sk-new';
+  dlg.querySelector('button[data-action="save"]').click();
+  assert.equal(h.api.loadConfig().apiKey, 'sk-new');
+
+  h.api.openSettings();
+  root(h).querySelector('#pyr-settings button[data-action="clearKey"]').click();
+  assert.equal(h.api.loadConfig().apiKey, '');
+});
+
+test('menu settings command opens the panel', () => {
+  const h = loadUserscript();
+  h.api.init();
+  const settings = h.menu.find((m) => /настрой/i.test(m.name));
+  settings.fn();
+  assert.equal(h.api.isPanelOpen(), true);
+});
+
+test('untrusted hotkey events are ignored', () => {
+  const h = loadUserscript();
+  h.api.init();
+  h.window.__PYRAMID_TEST_HOOK__ = false;
+  h.document.dispatchEvent(
+    new h.window.KeyboardEvent('keydown', {
+      key: 'p',
+      code: 'KeyP',
+      ctrlKey: true,
+      shiftKey: true,
+      bubbles: true,
+    }),
+  );
+  assert.equal(h.api.isPanelOpen(), false);
+  h.window.__PYRAMID_TEST_HOOK__ = true;
+});
