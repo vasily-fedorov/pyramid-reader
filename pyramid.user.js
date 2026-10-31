@@ -3023,6 +3023,394 @@ if (typeof module === "object") {
   }
 
   // ---------------------------------------------------------------------------
+  // Panel
+  // ---------------------------------------------------------------------------
+
+  const PANEL_ID = 'ai-pyramid-host';
+
+  const STATE_LABELS = {
+    idle: '',
+    extracting: 'извлечение…',
+    requesting: 'запрос…',
+    thinking: 'модель думает…',
+    streaming: 'генерация…',
+    done: 'готово',
+    error: 'ошибка',
+    cached: 'из кэша',
+  };
+
+  const BUSY_STATES = new Set(['extracting', 'requesting', 'thinking', 'streaming']);
+
+  const PANEL_CSS = `
+    :host { all: initial; }
+    .panel {
+      --bg: #ffffff;
+      --fg: #16181d;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --accent: #2563eb;
+      --card: #f7f8fa;
+      --code: #f1f3f6;
+      position: fixed;
+      top: 0;
+      right: 0;
+      height: 100vh;
+      width: min(420px, 100vw);
+      display: flex;
+      flex-direction: column;
+      pointer-events: auto;
+      background: var(--bg);
+      color: var(--fg);
+      font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      box-shadow: -10px 0 30px rgba(0, 0, 0, 0.18);
+      border-left: 1px solid var(--line);
+      transform: translateX(100%);
+      transition: transform 0.22s ease;
+    }
+    .panel[data-open] { transform: translateX(0); }
+    @media (prefers-color-scheme: dark) {
+      .panel {
+        --bg: #16181d;
+        --fg: #e7e9ee;
+        --muted: #9aa3b2;
+        --line: #2b2f38;
+        --accent: #7aa2ff;
+        --card: #1e2229;
+        --code: #11141a;
+      }
+    }
+    .pyr-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: var(--card);
+    }
+    .pyr-title { font-weight: 600; font-size: 14px; margin-right: auto; }
+    .pyr-badge {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 45%;
+    }
+    .pyr-header button, .pyr-focus-bar button, .pyr-error button {
+      font: inherit;
+      color: var(--fg);
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 4px 8px;
+      cursor: pointer;
+    }
+    .pyr-header button:hover, .pyr-focus-bar button:hover, .pyr-error button:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .pyr-focus-bar {
+      display: flex;
+      gap: 8px;
+      padding: 10px 14px;
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      border-bottom: 1px solid var(--line);
+      z-index: 2;
+    }
+    .pyr-focus-bar input {
+      flex: 1 1 auto;
+      min-width: 0;
+      font: inherit;
+      color: var(--fg);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 6px 8px;
+    }
+    .pyr-focus-bar input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+    .pyr-focus-bar button { white-space: nowrap; }
+    .pyr-focus-bar button:disabled, .pyr-focus-bar input:disabled { opacity: 0.55; cursor: default; }
+    .pyr-note {
+      padding: 0 14px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .pyr-note:not(:empty) { padding: 8px 14px; border-bottom: 1px solid var(--line); }
+    .pyr-content {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      padding: 14px;
+    }
+    .pyr-content h3 { font-size: 15px; margin: 18px 0 8px; }
+    .pyr-content h3:first-child { margin-top: 0; }
+    .pyr-content p { margin: 0 0 10px; }
+    .pyr-content ul, .pyr-content ol { margin: 0 0 10px; padding-left: 22px; }
+    .pyr-content li { margin: 2px 0; }
+    .pyr-content code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12.5px;
+      background: var(--code);
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+    .pyr-content pre {
+      background: var(--code);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      overflow-x: auto;
+    }
+    .pyr-content pre code { background: none; padding: 0; }
+    .pyr-content details {
+      border-left: 2px solid var(--line);
+      padding: 2px 0 2px 10px;
+      margin: 8px 0;
+    }
+    .pyr-content details details { margin-left: 14px; border-left-style: dashed; }
+    .pyr-content summary {
+      cursor: pointer;
+      font-weight: 600;
+      padding: 2px 0;
+      list-style: none;
+    }
+    .pyr-content summary::-webkit-details-marker { display: none; }
+    .pyr-content summary::before { content: "▸"; color: var(--accent); margin-right: 6px; }
+    .pyr-content details[open] > summary::before { content: "▾"; }
+    .pyr-content summary:focus-visible { outline: 2px solid var(--accent); }
+    .pyr-error { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+    .pyr-error p { margin: 0; }
+    .pyr-footer {
+      padding: 8px 14px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 11.5px;
+    }
+    .pyr-sent {
+      border-top: 1px solid var(--line);
+      padding: 6px 14px 10px;
+      color: var(--muted);
+      font-size: 11.5px;
+    }
+    .pyr-sent summary { cursor: pointer; }
+    .pyr-sent pre {
+      max-height: 180px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 11.5px;
+      margin: 8px 0 0;
+    }
+    .pyr-sent[hidden] { display: none; }
+  `;
+
+  const PANEL_HTML = `
+    <div class="panel" role="dialog" aria-label="Пирамида знаний" data-state="idle">
+      <header class="pyr-header">
+        <span class="pyr-title">Пирамида знаний</span>
+        <span class="pyr-badge" id="pyr-state"></span>
+        <button type="button" data-action="settings" title="Настройки" aria-label="Настройки">⚙</button>
+        <button type="button" data-action="close" title="Закрыть" aria-label="Закрыть">×</button>
+      </header>
+      <div class="pyr-focus-bar">
+        <input id="pyr-focus" type="text" placeholder="фокус, например: только архитектура" aria-label="Фокус" />
+        <button type="button" data-action="rebuild">Перестроить пирамиду</button>
+        <button type="button" data-action="cancel" hidden>Отменить</button>
+      </div>
+      <div class="pyr-note" id="pyr-note"></div>
+      <div class="pyr-content" id="pyr-content"></div>
+      <details class="pyr-sent" id="pyr-sent" hidden>
+        <summary>показать отправленный текст</summary>
+        <pre></pre>
+      </details>
+      <footer class="pyr-footer" id="pyr-footer"></footer>
+    </div>
+  `;
+
+  let panelRefs = null;
+  let rebuildHandler = null;
+  let cancelHandler = null;
+  let settingsHandler = null;
+
+  function ensureHost() {
+    if (panelRefs) return panelRefs;
+
+    const host = document.createElement('div');
+    host.id = PANEL_ID;
+    host.setAttribute('hidden', '');
+    host.style.position = 'fixed';
+    host.style.top = '0';
+    host.style.right = '0';
+    host.style.zIndex = '2147483646';
+    host.style.pointerEvents = 'none';
+
+    const root = host.attachShadow({ mode: 'open' });
+    root.innerHTML = '<style>' + PANEL_CSS + '</style>' + PANEL_HTML;
+
+    document.body.appendChild(host);
+
+    const pick = (selector) => root.querySelector(selector);
+
+    panelRefs = {
+      host,
+      root,
+      panel: pick('.panel'),
+      badge: pick('#pyr-state'),
+      content: pick('#pyr-content'),
+      note: pick('#pyr-note'),
+      footer: pick('#pyr-footer'),
+      input: pick('#pyr-focus'),
+      rebuild: pick('button[data-action="rebuild"]'),
+      cancel: pick('button[data-action="cancel"]'),
+      close: pick('button[data-action="close"]'),
+      settings: pick('.pyr-header button[data-action="settings"]'),
+      sent: pick('#pyr-sent'),
+      sentPre: pick('#pyr-sent pre'),
+    };
+
+    panelRefs.close.addEventListener('click', () => closePanel());
+    panelRefs.settings.addEventListener('click', () => {
+      if (settingsHandler) settingsHandler();
+    });
+    panelRefs.rebuild.addEventListener('click', () => {
+      if (rebuildHandler) rebuildHandler();
+    });
+    panelRefs.cancel.addEventListener('click', () => {
+      if (cancelHandler) cancelHandler();
+    });
+    panelRefs.input.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      if (rebuildHandler) rebuildHandler();
+    });
+
+    document.addEventListener(
+      'keydown',
+      (event) => {
+        if (event.key === 'Escape' && isPanelOpen()) closePanel();
+      },
+      true,
+    );
+
+    return panelRefs;
+  }
+
+  function isPanelOpen() {
+    const host = document.getElementById(PANEL_ID);
+    return Boolean(host) && !host.hasAttribute('hidden');
+  }
+
+  function openPanel() {
+    const refs = ensureHost();
+    refs.host.removeAttribute('hidden');
+    refs.panel.setAttribute('data-open', '');
+    refs.input.focus();
+  }
+
+  function closePanel() {
+    const refs = ensureHost();
+    refs.host.setAttribute('hidden', '');
+    refs.panel.removeAttribute('data-open');
+  }
+
+  function setPanelState(state, detail) {
+    const refs = ensureHost();
+    const options = detail || {};
+    let label = STATE_LABELS[state] || '';
+
+    if ((state === 'requesting' || state === 'thinking') && options.seconds != null) {
+      label += ' ' + options.seconds + ' с';
+    }
+
+    refs.badge.textContent = label;
+    refs.panel.setAttribute('data-state', state);
+
+    const busy = BUSY_STATES.has(state);
+    refs.cancel.hidden = !busy;
+    refs.input.disabled = busy;
+    refs.rebuild.disabled = busy;
+  }
+
+  function setPanelHtml(html) {
+    const refs = ensureHost();
+    refs.content.innerHTML = html;
+  }
+
+  function getFocusValue() {
+    const refs = ensureHost();
+    return refs.input.value;
+  }
+
+  function setFocusValue(value) {
+    const refs = ensureHost();
+    refs.input.value = String(value == null ? '' : value);
+  }
+
+  function onRebuild(handler) {
+    rebuildHandler = handler;
+  }
+
+  function onCancel(handler) {
+    cancelHandler = handler;
+  }
+
+  function onSettings(handler) {
+    settingsHandler = handler;
+  }
+
+  function setPanelNote(text) {
+    const refs = ensureHost();
+    refs.note.textContent = text || '';
+  }
+
+  function setSentTextPreview(text) {
+    const refs = ensureHost();
+    const value = String(text == null ? '' : text);
+    refs.sentPre.textContent = value;
+    refs.sent.hidden = !value;
+  }
+
+  function showError(message, opts) {
+    const refs = ensureHost();
+    refs.content.innerHTML = '';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'pyr-error';
+
+    const text = document.createElement('p');
+    text.textContent = message;
+    wrap.appendChild(text);
+
+    if (opts && opts.settings) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.action = 'settings';
+      button.textContent = 'Настройки';
+      button.addEventListener('click', () => {
+        if (settingsHandler) settingsHandler();
+      });
+      wrap.appendChild(button);
+    }
+
+    refs.content.appendChild(wrap);
+  }
+
+  function setFooter(info) {
+    const refs = ensureHost();
+    const parts = [];
+
+    if (typeof info.sent === 'number' && typeof info.total === 'number') {
+      parts.push('отправлено ' + info.sent + ' из ' + info.total + ' символов');
+    }
+    if (info.responseChars) parts.push('ответ: ' + info.responseChars + ' символов');
+    if (info.tokens) parts.push('токенов: ' + info.tokens);
+    if (info.model) parts.push(info.model);
+
+    refs.footer.textContent = parts.join(' · ');
+  }
+
+  // ---------------------------------------------------------------------------
   // Init
   // ---------------------------------------------------------------------------
 
@@ -3067,6 +3455,25 @@ if (typeof module === "object") {
       extractUsage,
       parseApiError,
       requestCompletion,
+      PANEL_ID,
+      ensureHost,
+      openPanel,
+      closePanel,
+      isPanelOpen,
+      setPanelState,
+      setPanelHtml,
+      getFocusValue,
+      setFocusValue,
+      onRebuild,
+      onCancel,
+      onSettings,
+      setPanelNote,
+      setSentTextPreview,
+      showError,
+      setFooter,
+      get __root() {
+        return panelRefs ? panelRefs.root : null;
+      },
     };
   } else {
     init();
