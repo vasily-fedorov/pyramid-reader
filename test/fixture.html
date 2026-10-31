@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Стенд: цикл событий</title>
+  <style>
+    body { font: 16px/1.6 Georgia, serif; max-width: 760px; margin: 40px auto; padding: 0 20px; color: #222; }
+    h1 { font-size: 28px; }
+    pre { background: #f3f4f6; padding: 12px; border-radius: 8px; overflow-x: auto; }
+    nav a { margin-right: 12px; }
+    footer { color: #777; margin-top: 40px; }
+  </style>
+</head>
+<body>
+<nav><a href="/">Главная</a><a href="/docs">Документация</a></nav>
+
+<article>
+  <h1>Как на самом деле работает цикл событий</h1>
+  <p>Цикл событий — это механизм, который позволяет JavaScript выполнять неблокирующий код в одном потоке. Вместо того чтобы ждать завершения операции, движок ставит её колбэк в очередь и продолжает выполнять следующий код. Когда стек вызовов опустеет, цикл забирает из очереди следующую задачу и выполняет её.</p>
+  <p>Важно различать два вида очередей. Микрозадачи — это промисы и мутации DOM. Макрозадачи — это таймеры, сетевые события и обработчики ввода. После каждой макрозадачи движок полностью опустошает очередь микрозадач, и только потом переходит к следующей макрозадаче. Из этого следует, что промис, созданный внутри обработчика таймера, выполнится раньше следующего таймера, даже если у второго нулевая задержка.</p>
+  <pre><code class="language-js">console.log('sync');
+
+setTimeout(() => console.log('macro'), 0);
+
+Promise.resolve().then(() => console.log('micro'));
+
+console.log('end');</code></pre>
+  <p>Порядок вывода в примере выше предсказуем: сначала синхронные строки, затем микрозадача, затем макрозадача. Это не особенность конкретного движка, а требование спецификации. Понимание этого порядка избавляет от целого класса ошибок, когда код «иногда» выполняется не в том порядке, в котором его писали.</p>
+  <p>Блокирующий код останавливает всё. Пока выполняется синхронный цикл, таймеры не срабатывают, сетевые ответы не обрабатываются, а интерфейс не перерисовывается. Именно поэтому тяжёлые вычисления выносят в воркеры или разбивают на части, которые отдают управление между итерациями.</p>
+  <p>Наблюдать порядок удобно в отладчике: профилировщик показывает таймлайн задач, а логи с метками времени подтверждают теорию. Если поведение расходится с ожиданием, почти всегда виновата не «магия движка», а забытый синхронный участок или неверное предположение о том, какая очередь обрабатывается первой.</p>
+</article>
+
+<footer>© 2026 Стенд для проверки юзерскрипта.</footer>
+
+<script>
+  localStorage.setItem('pyr.config', JSON.stringify({
+    apiBase: 'http://127.0.0.1:8787/v1',
+    apiKey: '',
+    model: 'mock',
+  }));
+
+  window.GM_getValue = (key, fallback) => {
+    const raw = localStorage.getItem(key);
+    return raw === null ? fallback : JSON.parse(raw);
+  };
+  window.GM_setValue = (key, value) => localStorage.setItem(key, JSON.stringify(value));
+  window.GM_deleteValue = (key) => localStorage.removeItem(key);
+  window.GM_listValues = () => Object.keys(localStorage);
+  window.GM_registerMenuCommand = (name, fn) => {
+    window.__menu = window.__menu || [];
+    window.__menu.push({ name, fn });
+  };
+  window.GM_xmlhttpRequest = (details) => {
+    const controller = new AbortController();
+    const url = details.url + (window.location.search || '');
+
+    fetch(url, {
+      method: details.method || 'GET',
+      headers: details.headers,
+      body: details.data,
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.body) {
+          const text = await response.text();
+          if (details.onload) details.onload({ status: response.status, responseText: text });
+          return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = '';
+
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          accumulated += decoder.decode(value, { stream: true });
+          if (details.onprogress) details.onprogress({ responseText: accumulated });
+        }
+
+        if (details.onload) details.onload({ status: response.status, responseText: accumulated });
+      })
+      .catch((error) => {
+        if (details.onerror && error.name !== 'AbortError') {
+          details.onerror({ error: String(error) });
+        }
+      });
+
+    return {
+      abort() {
+        controller.abort();
+      },
+    };
+  };
+
+  window.__PYRAMID_TEST_HOOK__ = false;
+</script>
+<script src="/pyramid.user.js"></script>
+</body>
+</html>
