@@ -151,6 +151,76 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Cache
+  // ---------------------------------------------------------------------------
+
+  const CACHE_PREFIX = 'pyr.cache.';
+  const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+  const CACHE_MAX_ENTRIES = 10;
+  const CACHE_MAX_BYTES = 98304;
+
+  let lastCacheTs = 0;
+
+  function djb2(input) {
+    let hash = 5381;
+    for (let i = 0; i < input.length; i += 1) {
+      hash = ((hash << 5) + hash + input.charCodeAt(i)) >>> 0;
+    }
+    return hash;
+  }
+
+  function cacheKey(url, text, focus) {
+    const body = url + '|' + String(text).length + '|' + String(text).slice(0, 64) + '|' + (focus || '');
+    return CACHE_PREFIX + djb2(body).toString(36);
+  }
+
+  function cacheKeys() {
+    return storageKeys().filter((key) => key.startsWith(CACHE_PREFIX));
+  }
+
+  function pruneCache() {
+    const entries = cacheKeys().map((key, index) => {
+      const value = storageGet(key, null);
+      const ts = value && typeof value.ts === 'number' ? value.ts : 0;
+      return { key, ts, index };
+    });
+
+    entries.sort((a, b) => (b.ts - a.ts) || (b.index - a.index));
+
+    entries.slice(CACHE_MAX_ENTRIES).forEach((entry) => storageDelete(entry.key));
+  }
+
+  function putCached(url, text, focus, html) {
+    const key = cacheKey(url, text, focus);
+    lastCacheTs = Math.max(Date.now(), lastCacheTs + 1);
+    storageSet(key, {
+      ts: lastCacheTs,
+      html: String(html).slice(0, CACHE_MAX_BYTES),
+      focus: focus || '',
+    });
+    pruneCache();
+  }
+
+  function getCached(url, text, focus) {
+    const key = cacheKey(url, text, focus);
+    const entry = storageGet(key, null);
+
+    if (!entry || typeof entry !== 'object') return null;
+    if ((entry.focus || '') !== (focus || '')) return null;
+
+    if (Date.now() - entry.ts > CACHE_TTL_MS) {
+      storageDelete(key);
+      return null;
+    }
+
+    return entry;
+  }
+
+  function clearCache() {
+    cacheKeys().forEach((key) => storageDelete(key));
+  }
+
+  // ---------------------------------------------------------------------------
   // Init
   // ---------------------------------------------------------------------------
 
@@ -169,6 +239,15 @@
       storageSet,
       storageDelete,
       storageKeys,
+      CACHE_PREFIX,
+      CACHE_TTL_MS,
+      CACHE_MAX_ENTRIES,
+      CACHE_MAX_BYTES,
+      cacheKey,
+      getCached,
+      putCached,
+      pruneCache,
+      clearCache,
     };
   } else {
     init();
