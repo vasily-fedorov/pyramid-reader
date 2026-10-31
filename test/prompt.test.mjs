@@ -21,7 +21,8 @@ test('pyramid language follows the article language', () => {
 test('base prompt keeps the required structure headings', () => {
   const p = build('');
   assert.match(p, /<h3>📌 Executive Summary<\/h3>/);
-  assert.match(p, /<h3>📐 Многоуровневые Тезисы<\/h3>/);
+  assert.match(p, /<h3>📐 Тезисы<\/h3>/);
+  assert.doesNotMatch(p, /Многоуровневые/);
   assert.match(p, /Уровень 2/);
   assert.match(p, /Уровень 3/);
   assert.match(p, /Уровень 4/);
@@ -49,4 +50,18 @@ test('focus block warns against inventing missing material', () => {
 test('buildUserMessage wraps the article text', () => {
   const u = loadUserscript().api.buildUserMessage('Body here.');
   assert.equal(u, 'Статья:\n\nBody here.');
+});
+
+test('old heading text from cached pyramids is normalised on render', () => {
+  const a = loadUserscript().api;
+  const legacy = '<h3>📐 Многоуровневые Тезисы</h3><details><summary>x</summary><p>y</p></details>';
+  const out = a.normalizePyramidLabels(legacy);
+  assert.match(out, /<h3>📐 Тезисы<\/h3>/);
+  assert.doesNotMatch(out, /Многоуровневые/);
+});
+
+test('normalisation leaves other headings alone', () => {
+  const a = loadUserscript().api;
+  const keep = '<h3>📌 Executive Summary</h3><h4>Подробности</h4>';
+  assert.equal(a.normalizePyramidLabels(keep), keep);
 });
