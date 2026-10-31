@@ -65,3 +65,10 @@ test('normalisation leaves other headings alone', () => {
   const keep = '<h3>📌 Executive Summary</h3><h4>Подробности</h4>';
   assert.equal(a.normalizePyramidLabels(keep), keep);
 });
+
+test('prompt asks for a verbatim data-src citation on every thesis and fact', () => {
+  const p = build('');
+  assert.match(p, /data-src/);
+  assert.match(p, /дословн/i);
+  assert.match(p, /5-12 слов/);
+});

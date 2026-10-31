@@ -236,9 +236,22 @@
     'source', 'track', 'canvas', 'math',
   ]);
 
-  function stripAttributes(element) {
+  const CITATION_ATTR = 'data-src';
+  const CITATION_TAGS = new Set(['details', 'summary', 'li']);
+  const CITATION_MAX_CHARS = 400;
+
+  function stripAttributes(element, tag) {
+    const citation = CITATION_TAGS.has(tag) ? element.getAttribute(CITATION_ATTR) : null;
+
     while (element.attributes.length > 0) {
       element.removeAttribute(element.attributes[0].name);
+    }
+
+    if (citation) {
+      element.setAttribute(
+        CITATION_ATTR,
+        String(citation).replace(/\s+/g, ' ').trim().slice(0, CITATION_MAX_CHARS),
+      );
     }
   }
 
@@ -270,7 +283,7 @@
         return;
       }
 
-      stripAttributes(child);
+      stripAttributes(child, tag);
     });
   }
 
@@ -323,6 +336,13 @@
     'margin-left. Не выводи ничего, кроме HTML.',
   ].join('\n');
 
+  const CITATION_RULES = [
+    'Для каждого <summary> внутри <details> и для каждого <li> добавь атрибут',
+    'data-src с дословной цитатой из статьи (5-12 слов), скопированной символ в',
+    'символ из исходного текста. Цитата должна находиться в статье буквально.',
+    'Других атрибутов не используй.',
+  ].join('\n');
+
   const FOCUS_TEMPLATE = [
     'Сформируй пирамиду строго относительно следующего предмета интереса пользователя: <текст из поля ввода>',
     '',
@@ -331,7 +351,7 @@
   ].join('\n');
 
   function buildSystemPrompt(focus) {
-    const blocks = [BASE_PROMPT, PROMPT_RULES];
+    const blocks = [BASE_PROMPT, PROMPT_RULES, CITATION_RULES];
     const trimmed = String(focus == null ? '' : focus).trim();
     if (trimmed) {
       blocks.push(FOCUS_TEMPLATE.replace('<текст из поля ввода>', () => trimmed));
@@ -341,6 +361,188 @@
 
   function buildUserMessage(text) {
     return 'Статья:\n\n' + String(text == null ? '' : text);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Source jump
+  // ---------------------------------------------------------------------------
+
+  const SOURCE_SKIP_TAGS = new Set([
+    'SCRIPT', 'STYLE', 'NOSCRIPT', 'NAV', 'ASIDE', 'FOOTER', 'FORM',
+    'BUTTON', 'SELECT', 'TEXTAREA', 'INPUT', 'TEMPLATE',
+  ]);
+
+  const SOURCE_SKIP_CLASSES = ['cookie', 'newsletter', 'subscribe'];
+  const SOURCE_MAX_TOKENS = 200000;
+  const SOURCE_MIN_FALLBACK_TOKENS = 3;
+
+  function sourceWordPattern() {
+    return /[\p{L}\p{N}]+/gu;
+  }
+
+  function isSkippedForSource(element) {
+    if (!element) return true;
+    if (panelRefs && panelRefs.host && panelRefs.host.contains(element)) return true;
+    if (SOURCE_SKIP_TAGS.has(element.tagName)) return true;
+    return SOURCE_SKIP_CLASSES.some((name) => element.classList.contains(name));
+  }
+
+  function collectSourceTokens(root) {
+    const tokens = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+        let element = node.parentElement;
+        while (element && element !== root) {
+          if (isSkippedForSource(element)) return NodeFilter.FILTER_REJECT;
+          element = element.parentElement;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+
+    let node = walker.nextNode();
+    while (node && tokens.length < SOURCE_MAX_TOKENS) {
+      const pattern = sourceWordPattern();
+      let match = pattern.exec(node.nodeValue);
+      while (match) {
+        tokens.push({
+          word: match[0].toLowerCase(),
+          node,
+          start: match.index,
+          end: match.index + match[0].length,
+        });
+        match = pattern.exec(node.nodeValue);
+      }
+      node = walker.nextNode();
+    }
+
+    return tokens;
+  }
+
+  function wordsOf(text) {
+    const found = String(text == null ? '' : text).match(sourceWordPattern()) || [];
+    return found.map((word) => word.toLowerCase());
+  }
+
+  function matchTokenRun(tokens, target) {
+    if (target.length === 0) return null;
+    const limit = tokens.length - target.length;
+
+    for (let start = 0; start <= limit; start += 1) {
+      let matched = true;
+      for (let index = 0; index < target.length; index += 1) {
+        if (tokens[start + index].word !== target[index]) {
+          matched = false;
+          break;
+        }
+      }
+      if (matched) return { from: start, to: start + target.length - 1 };
+    }
+
+    return null;
+  }
+
+  function findArticleMatch(citation) {
+    const target = wordsOf(citation);
+    if (target.length === 0) return null;
+
+    const tokens = collectSourceTokens(document.body);
+    if (tokens.length === 0) return null;
+
+    let run = matchTokenRun(tokens, target);
+
+    for (let length = target.length - 1; !run && length >= SOURCE_MIN_FALLBACK_TOKENS; length -= 1) {
+      run = matchTokenRun(tokens, target.slice(0, length));
+    }
+
+    if (!run) return null;
+
+    const first = tokens[run.from];
+    const last = tokens[run.to];
+    const range = document.createRange();
+    range.setStart(first.node, first.start);
+    range.setEnd(last.node, last.end);
+
+    return { element: first.node.parentElement, range };
+  }
+
+  function flashSourceHit(element) {
+    let rect = null;
+    try {
+      rect = element.getBoundingClientRect();
+    } catch (error) {
+      rect = null;
+    }
+
+    const box = document.createElement('div');
+    box.className = 'pyr-source-hit';
+    const geometry = rect && rect.width > 0
+      ? 'left:' + Math.max(0, rect.left - 4) + 'px;top:' + Math.max(0, rect.top - 4) +
+        'px;width:' + (rect.width + 8) + 'px;height:' + (rect.height + 8) + 'px;'
+      : 'left:0;top:0;width:100%;height:3px;';
+
+    box.style.cssText =
+      'position:fixed;pointer-events:none;z-index:2147483645;border:2px solid #2563eb;' +
+      'border-radius:6px;background:rgba(37,99,235,0.14);transition:opacity 0.35s ease;' +
+      geometry;
+
+    document.body.appendChild(box);
+    setTimeout(() => {
+      box.style.opacity = '0';
+    }, 1100);
+    setTimeout(() => {
+      box.remove();
+    }, 1600);
+  }
+
+  function jumpToSource(citation) {
+    const hit = findArticleMatch(citation);
+    if (!hit) return false;
+
+    try {
+      hit.element.scrollIntoView({ block: 'center', inline: 'nearest' });
+    } catch (error) {
+      /* older engines ignore the options bag */
+    }
+
+    flashSourceHit(hit.element);
+    return true;
+  }
+
+  let noteBase = '';
+  let noteTimer = null;
+
+  function setTransientNote(text, ms) {
+    const refs = ensureHost();
+    refs.note.textContent = text;
+    if (noteTimer != null) clearTimeout(noteTimer);
+    noteTimer = setTimeout(() => {
+      noteTimer = null;
+      if (refs.note) refs.note.textContent = noteBase;
+    }, ms || 2600);
+  }
+
+  function citationOf(element) {
+    if (!element) return '';
+    const explicit = element.getAttribute('data-src');
+    if (explicit && explicit.trim()) return explicit.trim();
+    return element.textContent || '';
+  }
+
+  function handleSourceClick(event) {
+    const target = event.target;
+    if (!target || target.nodeType !== 1) return;
+
+    const anchor = target.closest('summary, li');
+    if (!anchor) return;
+
+    const citation = citationOf(anchor);
+    if (!citation) return;
+
+    if (!jumpToSource(citation)) {
+      setTransientNote('Не нашёл это место в статье.');
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -3483,6 +3685,11 @@ if (typeof module === "object") {
       margin: 8px 0;
     }
     .pyr-content details details { margin-left: 14px; border-left-style: dashed; }
+    .pyr-content summary[data-src], .pyr-content li[data-src] { cursor: pointer; }
+    .pyr-content summary[data-src]:hover, .pyr-content li[data-src]:hover {
+      text-decoration: underline dotted;
+      text-underline-offset: 3px;
+    }
     .pyr-content summary {
       cursor: pointer;
       font-weight: 600;
@@ -3731,6 +3938,8 @@ if (typeof module === "object") {
     panelRefs.resize.addEventListener('pointerup', endDrag);
     panelRefs.resize.addEventListener('pointercancel', endDrag);
 
+    panelRefs.content.addEventListener('click', handleSourceClick);
+
     panelRefs.exportMd.addEventListener('click', () => downloadPyramid('md'));
     panelRefs.exportOrg.addEventListener('click', () => downloadPyramid('org'));
 
@@ -3852,7 +4061,12 @@ if (typeof module === "object") {
 
   function setPanelNote(text) {
     const refs = ensureHost();
-    refs.note.textContent = text || '';
+    noteBase = text || '';
+    if (noteTimer != null) {
+      clearTimeout(noteTimer);
+      noteTimer = null;
+    }
+    refs.note.textContent = noteBase;
   }
 
   function setSentTextPreview(text) {
@@ -4253,6 +4467,9 @@ if (typeof module === "object") {
       sanitizeHtml,
       slugify,
       exportFilename,
+      findArticleMatch,
+      jumpToSource,
+      citationOf,
       pyramidToMarkdown,
       pyramidToOrg,
       exportPyramid,

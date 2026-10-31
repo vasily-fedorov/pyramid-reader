@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { JSDOM } from 'jsdom';
 import { loadUserscript } from './helpers/load-userscript.mjs';
+
+const DOMParser = new JSDOM('').window.DOMParser;
 
 const s = (html) => loadUserscript().api.sanitizeHtml(html);
 
@@ -46,4 +49,31 @@ test('html-like text inside an article does not become markup', () => {
 test('handles an unclosed stream fragment', () => {
   const out = s('<details><summary>x</summary><p>y');
   assert.match(out, /<details><summary>x<\/summary><p>y<\/p><\/details>/);
+});
+
+test('keeps data-src citations on summary and li', () => {
+  const out = s('<details><summary data-src="цитата из статьи">Тезис</summary><ul><li data-src="другая цитата">факт</li></ul></details>');
+  assert.match(out, /<summary data-src="цитата из статьи">/);
+  assert.match(out, /<li data-src="другая цитата">/);
+});
+
+test('strips data-src from tags that are not clickable anchors', () => {
+  const out = s('<div data-src="nope"><p data-src="also nope">x</p></div>');
+  assert.equal(out, '<div><p>x</p></div>');
+});
+
+test('data-src cannot smuggle extra attributes', () => {
+  const out = s('<li data-src="a&quot; onclick=&quot;alert(1)" onclick="alert(2)">x</li>');
+  const probe = new DOMParser().parseFromString(out, 'text/html');
+  const li = probe.querySelector('li');
+
+  assert.equal(li.attributes.length, 1);
+  assert.equal(li.hasAttribute('onclick'), false);
+  assert.equal(li.hasAttribute('data-src'), true);
+  assert.equal(li.textContent, 'x');
+});
+
+test('data-src value is capped', () => {
+  const out = s('<li data-src="' + 'a'.repeat(900) + '">x</li>');
+  assert.ok(out.length < 600);
 });
