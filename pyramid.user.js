@@ -221,6 +221,66 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Sanitizer
+  // ---------------------------------------------------------------------------
+
+  const ALLOWED_TAGS = new Set([
+    'h3', 'h4', 'h5', 'p', 'ul', 'ol', 'li', 'details', 'summary', 'strong',
+    'b', 'em', 'i', 'code', 'pre', 'blockquote', 'br', 'hr', 'span', 'div',
+    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+  ]);
+
+  const DROP_TAGS = new Set([
+    'script', 'style', 'iframe', 'object', 'embed', 'img', 'svg', 'link',
+    'meta', 'form', 'input', 'template', 'noscript', 'base', 'audio', 'video',
+    'source', 'track', 'canvas', 'math',
+  ]);
+
+  function stripAttributes(element) {
+    while (element.attributes.length > 0) {
+      element.removeAttribute(element.attributes[0].name);
+    }
+  }
+
+  function unwrap(element) {
+    const parent = element.parentNode;
+    if (!parent) return;
+    while (element.firstChild) parent.insertBefore(element.firstChild, element);
+    element.remove();
+  }
+
+  function cleanChildren(node) {
+    Array.from(node.childNodes).forEach((child) => {
+      if (child.nodeType === 8) {
+        child.remove();
+        return;
+      }
+      if (child.nodeType !== 1) return;
+
+      const tag = child.tagName.toLowerCase();
+      if (DROP_TAGS.has(tag)) {
+        child.remove();
+        return;
+      }
+
+      cleanChildren(child);
+
+      if (!ALLOWED_TAGS.has(tag)) {
+        unwrap(child);
+        return;
+      }
+
+      stripAttributes(child);
+    });
+  }
+
+  function sanitizeHtml(html) {
+    const doc = new DOMParser().parseFromString(String(html == null ? '' : html), 'text/html');
+    cleanChildren(doc.body);
+    return doc.body.innerHTML;
+  }
+
+  // ---------------------------------------------------------------------------
   // Init
   // ---------------------------------------------------------------------------
 
@@ -248,6 +308,9 @@
       putCached,
       pruneCache,
       clearCache,
+      ALLOWED_TAGS,
+      DROP_TAGS,
+      sanitizeHtml,
     };
   } else {
     init();
