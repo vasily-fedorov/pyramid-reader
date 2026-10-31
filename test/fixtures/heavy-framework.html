@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head><title>Understanding consistency models — Platform</title></head>
+<body>
+<div id="app">
+  <aside class="sidebar">
+    <ul>
+      <li><a href="/products">Products</a></li>
+      <li><a href="/pricing">Pricing</a></li>
+      <li><a href="/docs">Documentation</a></li>
+      <li><a href="/guides">Guides</a></li>
+      <li><a href="/api">API reference</a></li>
+      <li><a href="/status">Status</a></li>
+      <li><a href="/changelog">Changelog</a></li>
+      <li><a href="/blog">Blog</a></li>
+      <li><a href="/careers">Careers</a></li>
+      <li><a href="/contact">Contact</a></li>
+      <li><a href="/legal">Legal</a></li>
+      <li><a href="/privacy">Privacy</a></li>
+      <li><a href="/terms">Terms</a></li>
+      <li><a href="/security">Security</a></li>
+      <li><a href="/partners">Partners</a></li>
+      <li><a href="/community">Community</a></li>
+      <li><a href="/events">Events</a></li>
+      <li><a href="/training">Training</a></li>
+      <li><a href="/support">Support</a></li>
+      <li><a href="/login">Log in</a></li>
+    </ul>
+  </aside>
+  <div role="main">
+    <h1>Understanding consistency models</h1>
+    <p>A consistency model is a contract between a storage system and the programs that use it. It describes which observations a reader is allowed to make when writes are happening at the same time. Without such a contract, every application has to guess what a read means, and guesses differ between systems.</p>
+    <p>Linearizability is the strongest commonly used model. Every operation appears to take effect at a single instant between its invocation and its response, and all clients agree on that order. It is expensive because it requires coordination, and coordination costs latency across regions.</p>
+    <p>Sequential consistency relaxes the real-time requirement but keeps a single global order. Causal consistency keeps only the ordering that matters for cause and effect, which allows unrelated writes to be observed in different orders by different readers. Eventual consistency promises only that replicas converge once writes stop.</p>
+    <p>The practical advice is to pick the weakest model that your invariants actually require, then make the cost visible. Teams often reach for strong consistency by default and later discover that the latency budget never allowed it in the first place, which leads to ad hoc caching that quietly reintroduces the weaker model without its documented rules.</p>
+    <p>Whatever you choose, write it down next to the code that depends on it. A consistency model that lives only in a design document nobody reads is indistinguishable, in production, from no model at all.</p>
+  </div>
+</div>
+<footer><p>© 2026 Platform Inc</p></footer>
+</body>
+</html>

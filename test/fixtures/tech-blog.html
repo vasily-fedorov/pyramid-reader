@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head><title>Why we moved off the queue — Blog</title></head>
+<body>
+<header>
+  <div class="site-title">Notes from the workshop</div>
+  <div class="site-nav">Home · Archive · About</div>
+</header>
+<main>
+  <article>
+    <h1>Why we moved off the queue</h1>
+    <p>For two years our ingestion pipeline was a single queue with a pool of workers. It was simple, it was boring, and it worked right up until the day it did not. The failure was not dramatic: throughput dropped by a third over a week, and nobody could point at a single commit that caused it.</p>
+    <p>The problem turned out to be head-of-line blocking. One customer sent a batch of very large payloads, and every worker that picked up one of those jobs spent minutes on it while thousands of small jobs waited behind. The queue was fair in the sense that it preserved order, and unfair in the sense that a single tenant could starve everyone else.</p>
+    <p>We fixed it in two steps. First we split the queue by payload size into two lanes with separate worker pools, which immediately stopped the large jobs from blocking the small ones. Then we added a per-tenant concurrency cap so no single customer could occupy more than a fixed share of the pool, no matter how much they sent.</p>
+    <p>The lesson is not that queues are bad. The lesson is that a queue hides its scheduling policy, and a hidden policy is a policy nobody reviews. Once we wrote the policy down, the second fix was obvious and the first one was a stopgap we could schedule properly instead of shipping under pressure.</p>
+    <p>If you run a shared worker pool today, measure the age of the oldest job in the queue, not just the depth. Depth tells you how much work is waiting. Age tells you whether anything is actually moving, and it is the number your customers feel.</p>
+  </article>
+</main>
+<aside><h2>Related</h2><ul><li>Backpressure in practice</li><li>Choosing a retry policy</li></ul></aside>
+<footer><p>© 2026 Notes from the workshop</p></footer>
+</body>
+</html>

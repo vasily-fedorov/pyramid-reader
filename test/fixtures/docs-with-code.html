@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head><title>Working with sequences — Docs</title></head>
+<body>
+<header>
+  <nav>
+    <a href="/">Skip to content</a>
+    <a href="/docs">Docs</a>
+    <a href="/api">API</a>
+  </nav>
+</header>
+<main>
+  <article>
+    <h1>Working with sequences</h1>
+    <p>Sequences are the backbone of most data processing code. A sequence is any object that supports indexed access, iteration, and a known length. Lists, tuples, strings, and ranges all qualify, and the same slicing rules apply to every one of them, which is why learning them once pays off everywhere.</p>
+    <p>Slicing copies a range of elements without touching the original object. The three parts of a slice are start, stop, and step. When any part is omitted the interpreter fills in a sensible default: zero for start, the length for stop, and one for step. Negative indices count from the end, so the last element is always at index minus one.</p>
+    <p>The function below returns the first element of a sequence or a fallback when the sequence is empty. It avoids an index error by checking the length first, which is cheaper than catching an exception in the common case.</p>
+    <pre><code class="language-python">def f():
+    return 1
+</code></pre>
+    <p>Iteration is the other half of the story. A for loop asks the object for an iterator, then calls next until the iterator signals exhaustion. Anything that implements the two dunder methods for iteration can be used in a loop, unpacked, or passed to a function that consumes iterables. That is the whole protocol.</p>
+    <p>Installing the documentation tool locally gives you the same pages offline, including the search index and the examples. The two commands below are all you need on a fresh machine with a working interpreter on the path.</p>
+    <pre><code class="language-bash">pip install example
+python -m example
+</code></pre>
+    <p>When in doubt, prefer a comprehension over a manual accumulator loop. Comprehensions are faster, they read left to right, and they keep the loop variable out of the surrounding scope. Reach for an explicit loop only when the body has side effects or more than one statement.</p>
+  </article>
+</main>
+<footer><p>© 2026 Docs</p></footer>
+</body>
+</html>
