@@ -274,11 +274,19 @@
     });
   }
 
+  function normalizePyramidLabels(html) {
+    return String(html == null ? '' : html).replace(/Многоуровневые Тезисы/g, 'Тезисы');
+  }
+
   function stripMarkdownFence(text) {
     let out = String(text == null ? '' : text);
     out = out.replace(/^\s*```[a-zA-Z0-9_-]*[ \t]*\r?\n/, '');
     out = out.replace(/\r?\n?```[ \t]*$/, '');
     return out;
+  }
+
+  function prepareHtml(html) {
+    return normalizePyramidLabels(sanitizeHtml(stripMarkdownFence(html)));
   }
 
   function sanitizeHtml(html) {
@@ -300,7 +308,7 @@
     '',
     'Структура ответа:',
     '- <h3>📌 Executive Summary</h3> + 2-3 предложения сути статьи.',
-    '- <h3>📐 Многоуровневые Тезисы</h3>',
+    '- <h3>📐 Тезисы</h3>',
     '- Уровень 2: 3-5 главных тем статьи в тегах <details>. Внутри <summary> пиши',
     '  четкий тезис.',
     '- Уровень 3 (Вложенный): Внутри каждого тега Уровня 2 должно быть 2-3 подтезиса',
@@ -333,6 +341,261 @@
 
   function buildUserMessage(text) {
     return 'Статья:\n\n' + String(text == null ? '' : text);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Export
+  // ---------------------------------------------------------------------------
+
+  const TRANSLIT = {
+    а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z',
+    и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r',
+    с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh',
+    щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya',
+  };
+
+  function slugify(text) {
+    const transliterated = String(text == null ? '' : text)
+      .toLowerCase()
+      .split('')
+      .map((char) => (TRANSLIT[char] !== undefined ? TRANSLIT[char] : char))
+      .join('');
+    return (
+      transliterated
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 60) || 'pyramid'
+    );
+  }
+
+  function todayStamp() {
+    const now = new Date();
+    const pad = (value) => String(value).padStart(2, '0');
+    return now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+  }
+
+  function exportFilename(format) {
+    const title = document.title || '';
+    return slugify(title) + '-' + todayStamp() + (format === 'org' ? '.org' : '.md');
+  }
+
+  function inlineMarkup(node, format) {
+    let out = '';
+
+    node.childNodes.forEach((child) => {
+      if (child.nodeType === 3) {
+        out += String(child.nodeValue || '').replace(/\s+/g, ' ');
+        return;
+      }
+      if (child.nodeType !== 1) return;
+
+      const tag = child.tagName.toLowerCase();
+      const inner = inlineMarkup(child, format);
+
+      if (tag === 'br') {
+        out += ' ';
+        return;
+      }
+      if (tag === 'strong' || tag === 'b') {
+        out += format === 'org' ? '*' + inner + '*' : '**' + inner + '**';
+        return;
+      }
+      if (tag === 'em' || tag === 'i') {
+        out += format === 'org' ? '/' + inner + '/' : '*' + inner + '*';
+        return;
+      }
+      if (tag === 'code') {
+        out += format === 'org' ? '~' + inner + '~' : '`' + inner + '`';
+        return;
+      }
+      out += inner;
+    });
+
+    return out.replace(/[ \t]+/g, ' ').trim();
+  }
+
+  function codeBlock(pre, format) {
+    const code = pre.querySelector('code') || pre;
+    const className = String(code.className || '') + ' ' + String(pre.className || '');
+    const match = className.match(/language-([\w-]+)/);
+    const language = match ? match[1] : '';
+    const body = String(code.textContent || '').replace(/\n+$/, '');
+
+    if (format === 'org') {
+      return ['#+begin_src ' + language, body, '#+end_src'];
+    }
+    return ['```' + language, body, '```'];
+  }
+
+  function listLines(list, indent, format) {
+    const lines = [];
+    const ordered = list.tagName.toLowerCase() === 'ol';
+    let index = 1;
+
+    Array.from(list.children).forEach((item) => {
+      if (item.tagName.toLowerCase() !== 'li') return;
+      const nested = Array.from(item.children).filter((child) =>
+        ['ul', 'ol'].includes(child.tagName.toLowerCase()),
+      );
+      const prose = inlineMarkup(item, format);
+      const marker = ordered ? index + '. ' : '- ';
+      lines.push(indent + marker + prose);
+      nested.forEach((child) => {
+        lines.push(...listLines(child, indent + '  ', format));
+      });
+      index += 1;
+    });
+
+    return lines;
+  }
+
+  function tableLines(table, format) {
+    const rows = Array.from(table.querySelectorAll('tr')).map((row) =>
+      Array.from(row.children)
+        .map((cell) => inlineMarkup(cell, format))
+        .join(' | '),
+    );
+    if (rows.length === 0) return [];
+    if (format === 'org') return rows.map((row) => '| ' + row + ' |');
+    if (rows.length === 1) return rows.map((row) => '| ' + row + ' |');
+    const header = '| ' + rows[0] + ' |';
+    const divider = '|' + rows[0].split('|').map(() => ' --- |').join('');
+    return [header, divider, ...rows.slice(1).map((row) => '| ' + row + ' |')];
+  }
+
+  function blockLines(node, level, format) {
+    const lines = [];
+
+    node.childNodes.forEach((child) => {
+      if (child.nodeType === 3) {
+        const text = String(child.nodeValue || '').replace(/\s+/g, ' ').trim();
+        if (text) lines.push(text);
+        return;
+      }
+      if (child.nodeType !== 1) return;
+
+      const tag = child.tagName.toLowerCase();
+      const headingMarker = format === 'org' ? '*' : '#';
+
+      if (tag === 'h3' || tag === 'h4' || tag === 'h5') {
+        const depth = Math.max(1, level + (Number(tag.slice(1)) - 3));
+        lines.push(headingMarker.repeat(depth) + ' ' + inlineMarkup(child, format), '');
+        return;
+      }
+
+      if (tag === 'details') {
+        const summary = Array.from(child.children).find(
+          (element) => element.tagName.toLowerCase() === 'summary',
+        );
+        if (summary) {
+          lines.push(headingMarker.repeat(level + 1) + ' ' + inlineMarkup(summary, format), '');
+        }
+        lines.push(...blockLines(child, level + 1, format));
+        return;
+      }
+
+      if (tag === 'summary') return;
+
+      if (tag === 'p') {
+        const text = inlineMarkup(child, format);
+        if (text) lines.push(text, '');
+        return;
+      }
+
+      if (tag === 'ul' || tag === 'ol') {
+        lines.push(...listLines(child, '', format), '');
+        return;
+      }
+
+      if (tag === 'pre') {
+        lines.push(...codeBlock(child, format), '');
+        return;
+      }
+
+      if (tag === 'blockquote') {
+        const inner = blockLines(child, level, format)
+          .filter((line) => line !== '')
+          .join('\n');
+        if (format === 'org') {
+          lines.push('#+begin_quote', inner, '#+end_quote', '');
+        } else {
+          lines.push(
+            ...inner.split('\n').map((line) => '> ' + line),
+            '',
+          );
+        }
+        return;
+      }
+
+      if (tag === 'hr') {
+        lines.push(format === 'org' ? '-----' : '---', '');
+        return;
+      }
+
+      if (tag === 'table') {
+        lines.push(...tableLines(child, format), '');
+        return;
+      }
+
+      lines.push(...blockLines(child, level, format));
+    });
+
+    return lines;
+  }
+
+  function pyramidToText(html, title, format) {
+    const doc = new DOMParser().parseFromString(String(html == null ? '' : html), 'text/html');
+    const marker = format === 'org' ? '*' : '#';
+    const lines = [];
+
+    if (title) lines.push(marker + ' ' + String(title).trim(), '');
+
+    const baseLevel = format === 'org' ? (title ? 2 : 1) : 2;
+    lines.push(...blockLines(doc.body, baseLevel, format));
+
+    const text = lines
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    return text ? text + '\n' : '';
+  }
+
+  function pyramidToMarkdown(html, title) {
+    return pyramidToText(html, title, 'md');
+  }
+
+  function pyramidToOrg(html, title) {
+    return pyramidToText(html, title, 'org');
+  }
+
+  function exportPyramid(format) {
+    if (!lastRenderedHtml) return null;
+    const title = document.title || '';
+    const text =
+      format === 'org' ? pyramidToOrg(lastRenderedHtml, title) : pyramidToMarkdown(lastRenderedHtml, title);
+    if (!text) return null;
+    return { filename: exportFilename(format), text };
+  }
+
+  function downloadText(filename, text) {
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
+  function downloadPyramid(format) {
+    const result = exportPyramid(format);
+    if (!result) return false;
+    downloadText(result.filename, result.text);
+    return true;
   }
 
   // ---------------------------------------------------------------------------
@@ -3079,7 +3342,7 @@ if (typeof module === "object") {
       top: 0;
       right: 0;
       height: 100vh;
-      width: min(420px, 100vw);
+      width: var(--pyr-width, min(420px, 100vw));
       display: flex;
       flex-direction: column;
       pointer-events: auto;
@@ -3092,6 +3355,33 @@ if (typeof module === "object") {
       transition: transform 0.22s ease;
     }
     .panel[data-open] { transform: translateX(0); }
+    .panel[data-wide] { width: min(96vw, 100vw); }
+    .pyr-resize {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 6px;
+      cursor: col-resize;
+      background: transparent;
+      touch-action: none;
+      z-index: 3;
+    }
+    .pyr-resize:hover, .pyr-resize:focus-visible { background: var(--accent); opacity: 0.35; }
+    #pyr-footer-text { flex: 1 1 auto; min-width: 0; }
+    .pyr-export { display: flex; gap: 4px; flex: 0 0 auto; }
+    .pyr-export button {
+      font: inherit;
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      padding: 2px 6px;
+      cursor: pointer;
+    }
+    .pyr-export button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .pyr-export button:disabled { opacity: 0.4; cursor: default; }
     @media (prefers-color-scheme: dark) {
       .panel {
         --bg: #16181d;
@@ -3206,6 +3496,9 @@ if (typeof module === "object") {
     .pyr-error { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
     .pyr-error p { margin: 0; }
     .pyr-footer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       padding: 8px 14px;
       border-top: 1px solid var(--line);
       color: var(--muted);
@@ -3270,9 +3563,11 @@ if (typeof module === "object") {
 
   const PANEL_HTML = `
     <div class="panel" role="dialog" aria-label="Пирамида знаний" data-state="idle">
+      <div class="pyr-resize" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Изменить ширину панели"></div>
       <header class="pyr-header">
         <span class="pyr-title">Пирамида знаний</span>
         <span class="pyr-badge" id="pyr-state"></span>
+        <button type="button" data-action="wide" title="Развернуть" aria-label="Развернуть на весь экран" aria-pressed="false">⤢</button>
         <button type="button" data-action="settings" title="Настройки" aria-label="Настройки">⚙</button>
         <button type="button" data-action="close" title="Закрыть" aria-label="Закрыть">×</button>
       </header>
@@ -3287,7 +3582,13 @@ if (typeof module === "object") {
         <summary>показать отправленный текст</summary>
         <pre></pre>
       </details>
-      <footer class="pyr-footer" id="pyr-footer"></footer>
+      <footer class="pyr-footer" id="pyr-footer">
+        <span id="pyr-footer-text"></span>
+        <span class="pyr-export">
+          <button type="button" data-export="md" title="Скачать Markdown" disabled>↓ MD</button>
+          <button type="button" data-export="org" title="Скачать Org" disabled>↓ Org</button>
+        </span>
+      </footer>
     </div>
   `;
 
@@ -3295,6 +3596,61 @@ if (typeof module === "object") {
   let rebuildHandler = null;
   let cancelHandler = null;
   let settingsHandler = null;
+  let lastRenderedHtml = '';
+  let panelWidth = null;
+  let panelWide = false;
+
+  const UI_KEY = 'pyr.ui';
+  const MIN_PANEL_WIDTH = 340;
+
+  function maxPanelWidth() {
+    return Math.round((window.innerWidth || 1024) * 0.98);
+  }
+
+  function readPanelUi() {
+    const stored = storageGet(UI_KEY, null);
+    if (!stored || typeof stored !== 'object') return;
+    if (typeof stored.width === 'number' && Number.isFinite(stored.width)) {
+      panelWidth = stored.width;
+    }
+    panelWide = stored.wide === true;
+  }
+
+  function savePanelUi() {
+    storageSet(UI_KEY, { width: panelWidth, wide: panelWide });
+  }
+
+  function applyPanelUi() {
+    if (!panelRefs) return;
+    if (panelWidth != null) {
+      panelRefs.panel.style.setProperty('--pyr-width', panelWidth + 'px');
+    } else {
+      panelRefs.panel.style.removeProperty('--pyr-width');
+    }
+    if (panelWide) {
+      panelRefs.panel.setAttribute('data-wide', '');
+    } else {
+      panelRefs.panel.removeAttribute('data-wide');
+    }
+    if (panelRefs.wide) {
+      panelRefs.wide.setAttribute('aria-pressed', panelWide ? 'true' : 'false');
+      panelRefs.wide.title = panelWide ? 'Свернуть' : 'Развернуть';
+    }
+  }
+
+  function setPanelWidth(px) {
+    const clamped = Math.min(maxPanelWidth(), Math.max(MIN_PANEL_WIDTH, Math.round(Number(px) || 0)));
+    panelWidth = clamped;
+    if (panelRefs) panelRefs.panel.style.setProperty('--pyr-width', clamped + 'px');
+    return clamped;
+  }
+
+  function togglePanelWide() {
+    panelWide = !panelWide;
+    applyPanelUi();
+    savePanelUi();
+    return panelWide;
+  }
 
   function ensureHost() {
     if (panelRefs) return panelRefs;
@@ -3323,6 +3679,11 @@ if (typeof module === "object") {
       content: pick('#pyr-content'),
       note: pick('#pyr-note'),
       footer: pick('#pyr-footer'),
+      footerText: pick('#pyr-footer-text'),
+      wide: pick('button[data-action="wide"]'),
+      resize: pick('.pyr-resize'),
+      exportMd: pick('[data-export="md"]'),
+      exportOrg: pick('[data-export="org"]'),
       input: pick('#pyr-focus'),
       rebuild: pick('button[data-action="rebuild"]'),
       cancel: pick('button[data-action="cancel"]'),
@@ -3331,6 +3692,47 @@ if (typeof module === "object") {
       sent: pick('#pyr-sent'),
       sentPre: pick('#pyr-sent pre'),
     };
+
+    readPanelUi();
+    applyPanelUi();
+
+    let dragStartX = 0;
+    let dragStartWidth = 0;
+
+    panelRefs.wide.addEventListener('click', () => togglePanelWide());
+
+    panelRefs.resize.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      const current = panelRefs.panel.getBoundingClientRect().width || panelWidth || 420;
+      setPanelWidth(current + (event.key === 'ArrowLeft' ? 40 : -40));
+      savePanelUi();
+    });
+
+    panelRefs.resize.addEventListener('pointerdown', (event) => {
+      dragStartX = event.clientX;
+      dragStartWidth = panelRefs.panel.getBoundingClientRect().width || 420;
+      if (panelRefs.resize.setPointerCapture) {
+        panelRefs.resize.setPointerCapture(event.pointerId);
+      }
+      event.preventDefault();
+    });
+
+    panelRefs.resize.addEventListener('pointermove', (event) => {
+      if (dragStartX === 0) return;
+      setPanelWidth(dragStartWidth + (dragStartX - event.clientX));
+    });
+
+    const endDrag = () => {
+      if (dragStartX === 0) return;
+      dragStartX = 0;
+      savePanelUi();
+    };
+    panelRefs.resize.addEventListener('pointerup', endDrag);
+    panelRefs.resize.addEventListener('pointercancel', endDrag);
+
+    panelRefs.exportMd.addEventListener('click', () => downloadPyramid('md'));
+    panelRefs.exportOrg.addEventListener('click', () => downloadPyramid('org'));
 
     panelRefs.close.addEventListener('click', () => closePanel());
     panelRefs.settings.addEventListener('click', () => {
@@ -3420,6 +3822,10 @@ if (typeof module === "object") {
     const state = captureViewState(refs.content);
     refs.content.innerHTML = html;
     applyViewState(refs.content, state);
+    lastRenderedHtml = refs.content.innerHTML;
+    const ready = lastRenderedHtml.trim().length > 0;
+    if (refs.exportMd) refs.exportMd.disabled = !ready;
+    if (refs.exportOrg) refs.exportOrg.disabled = !ready;
   }
 
   function getFocusValue() {
@@ -3492,7 +3898,7 @@ if (typeof module === "object") {
     if (info.tokens) parts.push('токенов: ' + info.tokens);
     if (info.model) parts.push(info.model);
 
-    refs.footer.textContent = parts.join(' · ');
+    refs.footerText.textContent = parts.join(' · ');
   }
 
   // ---------------------------------------------------------------------------
@@ -3565,7 +3971,7 @@ if (typeof module === "object") {
     if (!options.force) {
       const cached = getCached(location.href, extracted.text, focus);
       if (cached) {
-        setPanelHtml(sanitizeHtml(stripMarkdownFence(cached.html)));
+        setPanelHtml(prepareHtml(cached.html));
         setPanelState('cached');
         return;
       }
@@ -3587,7 +3993,7 @@ if (typeof module === "object") {
         clearTimeout(pendingRender);
         pendingRender = null;
       }
-      setPanelHtml(sanitizeHtml(stripMarkdownFence(accumulated)));
+      setPanelHtml(prepareHtml(accumulated));
     }
 
     activeRequest = requestCompletion({
@@ -3612,7 +4018,7 @@ if (typeof module === "object") {
         pendingRender = setTimeout(() => {
           pendingRender = null;
           if (token !== runSeq) return;
-          setPanelHtml(sanitizeHtml(stripMarkdownFence(accumulated)));
+          setPanelHtml(prepareHtml(accumulated));
         }, 200);
       },
 
@@ -3842,7 +4248,15 @@ if (typeof module === "object") {
       ALLOWED_TAGS,
       DROP_TAGS,
       stripMarkdownFence,
+      normalizePyramidLabels,
+      prepareHtml,
       sanitizeHtml,
+      slugify,
+      exportFilename,
+      pyramidToMarkdown,
+      pyramidToOrg,
+      exportPyramid,
+      downloadPyramid,
       BASE_PROMPT,
       PROMPT_RULES,
       FOCUS_TEMPLATE,
@@ -3867,6 +4281,8 @@ if (typeof module === "object") {
       setPanelHtml,
       captureViewState,
       applyViewState,
+      setPanelWidth,
+      togglePanelWide,
       getFocusValue,
       setFocusValue,
       onRebuild,

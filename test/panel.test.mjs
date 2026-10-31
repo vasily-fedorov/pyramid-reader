@@ -171,3 +171,54 @@ test('setPanelHtml restores scroll position after replacing content', () => {
   assert.equal(content.scrollTop, 240);
   delete content.innerHTML;
 });
+
+test('setPanelWidth clamps to the allowed range and applies the width', () => {
+  const h = loadUserscript();
+  h.window.__defineGetter__ ? null : null;
+  Object.defineProperty(h.window, 'innerWidth', { value: 1200, configurable: true });
+  h.api.openPanel();
+
+  h.api.setPanelWidth(900);
+  assert.equal(q(h, '.panel').style.getPropertyValue('--pyr-width'), '900px');
+
+  h.api.setPanelWidth(100);
+  assert.equal(q(h, '.panel').style.getPropertyValue('--pyr-width'), '340px');
+
+  h.api.setPanelWidth(99999);
+  assert.equal(q(h, '.panel').style.getPropertyValue('--pyr-width'), '1176px');
+});
+
+test('maximize toggles the wide state and persists it', () => {
+  const h = loadUserscript();
+  h.api.openPanel();
+  const panel = q(h, '.panel');
+  assert.equal(panel.hasAttribute('data-wide'), false);
+
+  h.api.togglePanelWide();
+  assert.equal(panel.hasAttribute('data-wide'), true);
+  assert.equal(h.api.storageGet('pyr.ui', {}).wide, true);
+
+  h.api.togglePanelWide();
+  assert.equal(panel.hasAttribute('data-wide'), false);
+});
+
+test('saved panel width is restored from storage on the next page', () => {
+  const h = loadUserscript({ store: { 'pyr.ui': { width: 760 } } });
+  h.api.openPanel();
+  assert.equal(q(h, '.panel').style.getPropertyValue('--pyr-width'), '760px');
+});
+
+test('resize handle supports keyboard adjustment', () => {
+  const h = loadUserscript();
+  Object.defineProperty(h.window, 'innerWidth', { value: 1200, configurable: true });
+  h.api.openPanel();
+  h.api.setPanelWidth(600);
+  const handle = q(h, '.pyr-resize');
+  assert.ok(handle);
+  assert.equal(handle.getAttribute('role'), 'separator');
+
+  handle.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+  assert.equal(q(h, '.panel').style.getPropertyValue('--pyr-width'), '640px');
+  handle.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  assert.equal(q(h, '.panel').style.getPropertyValue('--pyr-width'), '600px');
+});
