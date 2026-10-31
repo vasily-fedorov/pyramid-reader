@@ -2891,6 +2891,138 @@ if (typeof module === "object") {
   }
 
   // ---------------------------------------------------------------------------
+  // API client
+  // ---------------------------------------------------------------------------
+
+  function requestCompletion(options) {
+    const config = options.config;
+    const base = String(config.apiBase || '').replace(/\/+$/, '');
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (config.apiKey) headers.Authorization = 'Bearer ' + config.apiKey;
+
+    const body = JSON.stringify({
+      model: config.model,
+      temperature: config.temperature,
+      max_tokens: config.maxTokens,
+      stream: true,
+      messages: [
+        { role: 'system', content: options.system },
+        { role: 'user', content: options.user },
+      ],
+    });
+
+    let seen = 0;
+    let accumulated = '';
+    let usage = null;
+    let aborted = false;
+    let settled = false;
+    let waitingNotified = false;
+
+    const parser = createSseParser((payload) => {
+      const tokens = extractUsage(payload);
+      if (tokens !== null) usage = tokens;
+
+      const delta = extractDelta(payload);
+      if (delta) {
+        accumulated += delta;
+        if (options.onDelta) options.onDelta(delta);
+        return;
+      }
+
+      if (waitingNotified) return;
+
+      const choices = payload && payload.choices;
+      const first = choices && choices[0] && choices[0].delta;
+      if (first && (typeof first.reasoning_content === 'string' || first.role)) {
+        waitingNotified = true;
+        if (options.onWaiting) options.onWaiting();
+      }
+    });
+
+    function feed(text) {
+      if (text.length <= seen) return;
+      const fresh = text.slice(seen);
+      seen = text.length;
+      parser.push(fresh);
+    }
+
+    function fail(message) {
+      if (aborted || settled) return;
+      settled = true;
+      if (options.onError) options.onError(message);
+    }
+
+    const handle = GM_xmlhttpRequest({
+      method: 'POST',
+      url: base + '/chat/completions',
+      headers,
+      data: body,
+      timeout: Math.round(config.timeoutSec * 1000),
+
+      onprogress(response) {
+        if (aborted || settled) return;
+        feed(response && response.responseText ? response.responseText : '');
+      },
+
+      onload(response) {
+        if (aborted || settled) return;
+        const status = response && typeof response.status === 'number' ? response.status : 0;
+        const text = (response && response.responseText) || '';
+
+        if (status >= 400) {
+          fail(parseApiError(status, text));
+          return;
+        }
+
+        feed(text);
+        parser.flush();
+
+        if (!accumulated) {
+          try {
+            const parsed = JSON.parse(text);
+            const choice = parsed && parsed.choices && parsed.choices[0];
+            const content = choice && choice.message && choice.message.content;
+            if (typeof content === 'string') accumulated = content;
+            const tokens = extractUsage(parsed);
+            if (tokens !== null) usage = tokens;
+          } catch (error) {
+            accumulated = accumulated || '';
+          }
+        }
+
+        if (!accumulated) {
+          fail('Модель вернула пустой ответ.');
+          return;
+        }
+
+        settled = true;
+        if (options.onDone) options.onDone(accumulated, usage);
+      },
+
+      onerror() {
+        fail(parseApiError(0, 'Ошибка сети'));
+      },
+
+      ontimeout() {
+        fail(parseApiError(0, 'Таймаут'));
+      },
+    });
+
+    return {
+      abort() {
+        aborted = true;
+        settled = true;
+        try {
+          handle.abort();
+        } catch (error) {
+          return;
+        }
+      },
+    };
+  }
+
+  // ---------------------------------------------------------------------------
   // Init
   // ---------------------------------------------------------------------------
 
@@ -2934,6 +3066,7 @@ if (typeof module === "object") {
       extractDelta,
       extractUsage,
       parseApiError,
+      requestCompletion,
     };
   } else {
     init();
