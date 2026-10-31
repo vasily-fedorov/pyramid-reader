@@ -2777,6 +2777,120 @@ if (typeof module === "object") {
   }
 
   // ---------------------------------------------------------------------------
+  // Stream and errors
+  // ---------------------------------------------------------------------------
+
+  function createSseParser(onPayload) {
+    let buffer = '';
+    let finished = false;
+
+    function handleLine(rawLine) {
+      const line = rawLine.replace(/\r$/, '');
+      if (!line.trim()) return;
+      if (line.startsWith(':')) return;
+      if (!line.startsWith('data:')) return;
+
+      let data = line.slice(5);
+      if (data.startsWith(' ')) data = data.slice(1);
+      if (data.trim() === '[DONE]') {
+        finished = true;
+        return;
+      }
+
+      try {
+        onPayload(JSON.parse(data));
+      } catch (error) {
+        return;
+      }
+    }
+
+    function consume(final) {
+      let newlineIndex = buffer.indexOf('\n');
+      while (newlineIndex !== -1) {
+        handleLine(buffer.slice(0, newlineIndex));
+        buffer = buffer.slice(newlineIndex + 1);
+        if (finished) return;
+        newlineIndex = buffer.indexOf('\n');
+      }
+
+      if (final && buffer.trim()) {
+        handleLine(buffer);
+        buffer = '';
+      }
+    }
+
+    return {
+      push(chunkText) {
+        if (finished) return { done: true };
+        buffer += chunkText;
+        consume(false);
+        return { done: finished };
+      },
+      flush() {
+        if (finished) return { done: true };
+        consume(true);
+        return { done: finished };
+      },
+    };
+  }
+
+  function extractDelta(payload) {
+    const choices = payload && payload.choices;
+    if (!choices || !choices[0] || !choices[0].delta) return '';
+    const content = choices[0].delta.content;
+    return typeof content === 'string' ? content : '';
+  }
+
+  function extractUsage(payload) {
+    const tokens = payload && payload.usage && payload.usage.completion_tokens;
+    return typeof tokens === 'number' && tokens > 0 ? tokens : null;
+  }
+
+  function errorMessageOf(bodyText) {
+    const text = String(bodyText == null ? '' : bodyText);
+    try {
+      const parsed = JSON.parse(text);
+      const parts = [
+        parsed && parsed.error && parsed.error.message,
+        parsed && parsed.error && parsed.error.code,
+        parsed && parsed.message,
+        parsed && parsed.code,
+      ].filter((part) => typeof part === 'string' && part.trim());
+      if (parts.length > 0) return parts.join(' — ').slice(0, 400);
+    } catch (error) {
+      return text.trim().slice(0, 400);
+    }
+    return text.trim().slice(0, 400);
+  }
+
+  function parseApiError(status, bodyText) {
+    const message = errorMessageOf(bodyText);
+    const haystack = message.toLowerCase();
+
+    if (status === 401 || status === 403) {
+      return 'Неверный ключ API. Откройте настройки и проверьте ключ.';
+    }
+
+    if (status === 402 || status === 429 || /quota|rate.?limit|insufficient|billing/.test(haystack)) {
+      return 'Закончились токены или превышен лимит запросов.';
+    }
+
+    if (status === 404) {
+      return 'Модель или адрес не найдены. Проверьте apiBase и имя модели.';
+    }
+
+    if (status === 0) {
+      return 'Не удалось связаться с API. Проверьте адрес и доступ к нему из браузера.';
+    }
+
+    if (status === 400) {
+      return message ? 'Запрос отклонён: ' + message : 'Запрос отклонён сервером.';
+    }
+
+    return message ? 'Ошибка API (' + status + '): ' + message : 'Ошибка API (' + status + ').';
+  }
+
+  // ---------------------------------------------------------------------------
   // Init
   // ---------------------------------------------------------------------------
 
@@ -2816,6 +2930,10 @@ if (typeof module === "object") {
       SHORT_TEXT_CHARS,
       htmlToPlainText,
       extractArticle,
+      createSseParser,
+      extractDelta,
+      extractUsage,
+      parseApiError,
     };
   } else {
     init();
