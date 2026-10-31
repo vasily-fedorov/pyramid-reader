@@ -3312,6 +3312,7 @@ if (typeof module === "object") {
     const refs = ensureHost();
     refs.host.setAttribute('hidden', '');
     refs.panel.removeAttribute('data-open');
+    stopActiveRequest();
   }
 
   function setPanelState(state, detail) {
@@ -3411,6 +3412,147 @@ if (typeof module === "object") {
   }
 
   // ---------------------------------------------------------------------------
+  // Orchestration
+  // ---------------------------------------------------------------------------
+
+  let activeRequest = null;
+  let activeTimer = null;
+  let lastExtractedText = '';
+
+  function stopActiveRequest() {
+    if (activeRequest) {
+      try {
+        activeRequest.abort();
+      } catch (error) {
+        activeRequest = null;
+      }
+      activeRequest = null;
+    }
+    if (activeTimer != null) {
+      clearInterval(activeTimer);
+      activeTimer = null;
+    }
+  }
+
+  function currentExtraction() {
+    const config = loadConfig();
+    return extractArticle(document, {
+      autoExtract: config.autoExtract,
+      maxChars: config.maxChars,
+    });
+  }
+
+  function extractCurrentText() {
+    return currentExtraction().text;
+  }
+
+  function runPyramid(opts) {
+    const options = opts || {};
+    stopActiveRequest();
+
+    openPanel();
+    setPanelState('extracting');
+    setPanelNote('');
+
+    const config = loadConfig();
+    const extracted = currentExtraction();
+    lastExtractedText = extracted.text;
+
+    setFooter({
+      sent: extracted.text.length,
+      total: extracted.originalLength,
+      responseChars: 0,
+      model: config.model,
+      tokens: null,
+    });
+    setSentTextPreview(extracted.text);
+
+    if (extracted.truncated) {
+      setPanelNote(
+        'Текст обрезан, отправлено ' + extracted.text.length + ' из ' + extracted.originalLength + ' символов.',
+      );
+    } else if (extracted.short) {
+      setPanelNote('Похоже, это не статья — текст короткий.');
+    }
+
+    const focus = String(options.focus != null ? options.focus : getFocusValue()).trim();
+
+    if (!options.force) {
+      const cached = getCached(location.href, extracted.text, focus);
+      if (cached) {
+        setPanelHtml(sanitizeHtml(cached.html));
+        setPanelState('cached');
+        return;
+      }
+    }
+
+    let phase = 'requesting';
+    let seconds = 0;
+    let pending = null;
+    let accumulated = '';
+
+    setPanelState('requesting', { seconds: 0 });
+
+    activeTimer = setInterval(() => {
+      seconds += 1;
+      setPanelState(phase, { seconds });
+    }, 1000);
+
+    function renderNow() {
+      if (pending != null) {
+        clearTimeout(pending);
+        pending = null;
+      }
+      setPanelHtml(sanitizeHtml(accumulated));
+    }
+
+    activeRequest = requestCompletion({
+      config,
+      system: buildSystemPrompt(focus),
+      user: buildUserMessage(extracted.text),
+
+      onWaiting() {
+        phase = 'thinking';
+        setPanelState('thinking', { seconds });
+      },
+
+      onDelta(chunk) {
+        accumulated += chunk;
+        if (phase !== 'streaming') {
+          phase = 'streaming';
+          setPanelState('streaming');
+        }
+        if (pending != null) return;
+        pending = setTimeout(() => {
+          pending = null;
+          setPanelHtml(sanitizeHtml(accumulated));
+        }, 200);
+      },
+
+      onDone(html, usage) {
+        stopActiveRequest();
+        accumulated = html;
+        renderNow();
+        putCached(location.href, extracted.text, focus, html);
+        setFooter({
+          sent: extracted.text.length,
+          total: extracted.originalLength,
+          responseChars: html.length,
+          model: config.model,
+          tokens: usage,
+        });
+        setPanelState('done');
+      },
+
+      onError(message) {
+        stopActiveRequest();
+        showError(message, { settings: true });
+        setPanelState('error');
+      },
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // Init
   // ---------------------------------------------------------------------------
 
@@ -3471,6 +3613,10 @@ if (typeof module === "object") {
       setSentTextPreview,
       showError,
       setFooter,
+      stopActiveRequest,
+      runPyramid,
+      __extractText: extractCurrentText,
+      __abortRequest: stopActiveRequest,
       get __root() {
         return panelRefs ? panelRefs.root : null;
       },

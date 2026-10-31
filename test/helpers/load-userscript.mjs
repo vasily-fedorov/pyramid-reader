@@ -1,7 +1,20 @@
 import fs from 'node:fs';
+import { afterEach } from 'node:test';
 import { JSDOM } from 'jsdom';
 
 const USERSCRIPT = new URL('../../pyramid.user.js', import.meta.url);
+const openWindows = [];
+
+afterEach(() => {
+  while (openWindows.length > 0) {
+    const win = openWindows.pop();
+    try {
+      win.close();
+    } catch (error) {
+      /* already closed */
+    }
+  }
+});
 
 /**
  * Mount pyramid.user.js inside jsdom with GM_* shims.
@@ -16,6 +29,7 @@ export function loadUserscript({
 } = {}) {
   const dom = new JSDOM(html, { url, runScripts: 'dangerously' });
   const w = dom.window;
+  openWindows.push(w);
   const storeMap = new Map(Object.entries(store));
   const menu = [];
   const requests = [];
