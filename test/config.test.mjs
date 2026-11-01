@@ -45,3 +45,28 @@ test('storage roundtrip, delete and keys', () => {
   api.storageDelete('a');
   assert.deepEqual(api.storageKeys(), []);
 });
+
+test('default maxTokens leaves room for a full pyramid', () => {
+  const { api } = loadUserscript();
+  assert.ok(api.DEFAULT_CONFIG.maxTokens >= 8192);
+});
+
+test('thinking is off by default and configurable', () => {
+  const { api } = loadUserscript();
+  assert.equal(api.DEFAULT_CONFIG.thinking, false);
+  assert.equal(api.saveConfig({ thinking: true }).thinking, true);
+});
+
+test('a config saved before thinking existed is migrated once', () => {
+  const { api, store } = loadUserscript({ store: { 'pyr.config': { apiKey: 'k', maxTokens: 4096 } } });
+  const cfg = api.loadConfig();
+  assert.equal(cfg.maxTokens, 8192);
+  assert.equal(cfg.thinking, false);
+  assert.equal(cfg.apiKey, 'k');
+  assert.equal(store.get('pyr.config').maxTokens, 8192);
+});
+
+test('an explicit maxTokens chosen after the migration is kept', () => {
+  const { api } = loadUserscript({ store: { 'pyr.config': { maxTokens: 4096, thinking: false } } });
+  assert.equal(api.loadConfig().maxTokens, 4096);
+});

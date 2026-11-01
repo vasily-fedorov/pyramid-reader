@@ -134,3 +134,68 @@ test('timeout triggers the timeout message', () => {
   captured[0].ontimeout();
   assert.match(events.errors[0], /Не удалось связаться с API|таймаут/i);
 });
+
+test('disables DeepSeek thinking mode by default', () => {
+  const { captured } = run();
+  const body = JSON.parse(captured[0].data);
+  assert.deepEqual(body.thinking, { type: 'disabled' });
+});
+
+test('does not send the DeepSeek thinking field to other providers', () => {
+  const openai = run({ apiBase: 'https://api.openai.com/v1' });
+  assert.equal('thinking' in JSON.parse(openai.captured[0].data), false);
+
+  const ollama = run({ apiBase: 'http://localhost:11434/v1' });
+  assert.equal('thinking' in JSON.parse(ollama.captured[0].data), false);
+});
+
+test('enables thinking when the user asks for it', () => {
+  const { captured } = run({ thinking: true });
+  assert.deepEqual(JSON.parse(captured[0].data).thinking, { type: 'enabled' });
+});
+
+test('an empty answer with finish_reason length explains the token budget', () => {
+  const { captured, events } = run();
+  captured[0].onload({
+    responseText:
+      `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: 'thinking hard' } }] })}\n\n` +
+      `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'length' }], usage: { completion_tokens: 4096 } })}\n\n` +
+      'data: [DONE]\n\n',
+  });
+  assert.equal(events.done.length, 0);
+  assert.match(events.errors[0], /лимит|токен/i);
+  assert.match(events.errors[0], /размышл/i);
+});
+
+test('an empty answer filtered by content policy says so', () => {
+  const { captured, events } = run();
+  captured[0].onload({
+    responseText: `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'content_filter' }] })}\n\ndata: [DONE]\n\n`,
+  });
+  assert.match(events.errors[0], /фильтр/i);
+});
+
+test('a truly empty answer keeps the plain message', () => {
+  const { captured, events } = run();
+  captured[0].onload({ responseText: 'data: [DONE]\n\n' });
+  assert.match(events.errors[0], /пустой ответ/i);
+});
+
+test('content delivered as an array of text parts is concatenated', () => {
+  const { captured, events } = run();
+  captured[0].onload({
+    responseText: JSON.stringify({
+      choices: [
+        {
+          message: {
+            content: [
+              { type: 'text', text: '<h3>📌 Executive Summary</h3>' },
+              { type: 'text', text: '<p>ok</p>' },
+            ],
+          },
+        },
+      ],
+    }),
+  });
+  assert.equal(events.done[0], '<h3>📌 Executive Summary</h3><p>ok</p>');
+});

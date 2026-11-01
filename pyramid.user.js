@@ -29,10 +29,11 @@
     apiKey: '',
     model: 'deepseek-flash',
     maxChars: 60000,
-    maxTokens: 4096,
+    maxTokens: 8192,
     temperature: 0.3,
     timeoutSec: 180,
     autoExtract: true,
+    thinking: false,
   };
 
   const NUMERIC_LIMITS = {
@@ -128,7 +129,28 @@
       config.autoExtract = Boolean(merged.autoExtract);
     }
 
+    if (typeof merged.thinking === 'string') {
+      config.thinking = merged.thinking === 'true';
+    } else {
+      config.thinking = Boolean(merged.thinking);
+    }
+
     return config;
+  }
+
+  const LEGACY_MAX_TOKENS = 4096;
+
+  function migrateConfig(raw) {
+    if (!raw || typeof raw !== 'object') return raw;
+    if (typeof raw.thinking === 'boolean') return raw;
+
+    const legacy = Object.assign({}, raw);
+    if (Number(legacy.maxTokens) === LEGACY_MAX_TOKENS) {
+      legacy.maxTokens = DEFAULT_CONFIG.maxTokens;
+    }
+    legacy.thinking = DEFAULT_CONFIG.thinking;
+    storageSet(CONFIG_KEY, coerceConfig(legacy));
+    return legacy;
   }
 
   function loadConfig() {
@@ -136,12 +158,12 @@
     if (stored === null) return coerceConfig(null);
     if (typeof stored === 'string') {
       try {
-        return coerceConfig(JSON.parse(stored));
+        return coerceConfig(migrateConfig(JSON.parse(stored)));
       } catch (error) {
         return coerceConfig(null);
       }
     }
-    return coerceConfig(stored);
+    return coerceConfig(migrateConfig(stored));
   }
 
   function saveConfig(patch) {
@@ -3383,6 +3405,52 @@ if (typeof module === "object") {
   // API client
   // ---------------------------------------------------------------------------
 
+  function isDeepSeekEndpoint(apiBase) {
+    try {
+      const host = new URL(String(apiBase)).hostname;
+      return host === 'api.deepseek.com' || host.endsWith('.deepseek.com');
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function contentToString(value) {
+    if (typeof value === 'string') return value;
+    if (!Array.isArray(value)) return '';
+    return value
+      .map((part) => {
+        if (typeof part === 'string') return part;
+        if (part && typeof part.text === 'string') return part.text;
+        return '';
+      })
+      .join('');
+  }
+
+  function describeEmptyAnswer(finishReason, reasoningSeen) {
+    if (finishReason === 'length') {
+      return (
+        'Модель израсходовала лимит токенов и не успела выдать ответ. ' +
+        'Увеличьте «Макс. токенов» в настройках или отключите режим размышлений.'
+      );
+    }
+    if (finishReason === 'content_filter') {
+      return 'Ответ заблокирован фильтром содержимого модели. Попробуйте переформулировать фокус.';
+    }
+    if (finishReason === 'insufficient_system_resource') {
+      return 'Сервис модели не выделил ресурсы под запрос. Повторите позже.';
+    }
+    if (finishReason === 'aborted') {
+      return 'Сервер прервал генерацию. Повторите запрос.';
+    }
+    if (reasoningSeen) {
+      return (
+        'Модель потратила весь ответ на размышления и не прислала текст. ' +
+        'Увеличьте «Макс. токенов» или отключите режим размышлений в настройках.'
+      );
+    }
+    return 'Модель вернула пустой ответ.';
+  }
+
   function requestCompletion(options) {
     const config = options.config;
     const base = String(config.apiBase || '').replace(/\/+$/, '');
@@ -3390,7 +3458,7 @@ if (typeof module === "object") {
     const headers = { 'Content-Type': 'application/json' };
     if (config.apiKey) headers.Authorization = 'Bearer ' + config.apiKey;
 
-    const body = JSON.stringify({
+    const requestBody = {
       model: config.model,
       temperature: config.temperature,
       max_tokens: config.maxTokens,
@@ -3399,11 +3467,19 @@ if (typeof module === "object") {
         { role: 'system', content: options.system },
         { role: 'user', content: options.user },
       ],
-    });
+    };
+
+    if (isDeepSeekEndpoint(base)) {
+      requestBody.thinking = { type: config.thinking ? 'enabled' : 'disabled' };
+    }
+
+    const body = JSON.stringify(requestBody);
 
     let seen = 0;
     let accumulated = '';
     let usage = null;
+    let finishReason = '';
+    let reasoningSeen = false;
     let aborted = false;
     let settled = false;
     let waitingNotified = false;
@@ -3412,6 +3488,11 @@ if (typeof module === "object") {
       const tokens = extractUsage(payload);
       if (tokens !== null) usage = tokens;
 
+      const choice = payload && payload.choices && payload.choices[0];
+      if (choice && typeof choice.finish_reason === 'string' && choice.finish_reason) {
+        finishReason = choice.finish_reason;
+      }
+
       const delta = extractDelta(payload);
       if (delta) {
         accumulated += delta;
@@ -3419,11 +3500,13 @@ if (typeof module === "object") {
         return;
       }
 
-      if (waitingNotified) return;
+      const piece = choice && choice.delta;
+      if (piece && typeof piece.reasoning_content === 'string' && piece.reasoning_content) {
+        reasoningSeen = true;
+      }
 
-      const choices = payload && payload.choices;
-      const first = choices && choices[0] && choices[0].delta;
-      if (first && (typeof first.reasoning_content === 'string' || first.role)) {
+      if (waitingNotified) return;
+      if (piece && (typeof piece.reasoning_content === 'string' || piece.role)) {
         waitingNotified = true;
         if (options.onWaiting) options.onWaiting();
       }
@@ -3471,8 +3554,13 @@ if (typeof module === "object") {
           try {
             const parsed = JSON.parse(text);
             const choice = parsed && parsed.choices && parsed.choices[0];
-            const content = choice && choice.message && choice.message.content;
-            if (typeof content === 'string') accumulated = content;
+            accumulated = contentToString(choice && choice.message && choice.message.content);
+            if (choice && typeof choice.finish_reason === 'string' && choice.finish_reason) {
+              finishReason = choice.finish_reason;
+            }
+            if (choice && choice.message && typeof choice.message.reasoning_content === 'string') {
+              reasoningSeen = true;
+            }
             const tokens = extractUsage(parsed);
             if (tokens !== null) usage = tokens;
           } catch (error) {
@@ -3481,7 +3569,7 @@ if (typeof module === "object") {
         }
 
         if (!accumulated) {
-          fail('Модель вернула пустой ответ.');
+          fail(describeEmptyAnswer(finishReason, reasoningSeen));
           return;
         }
 
@@ -4292,6 +4380,7 @@ if (typeof module === "object") {
     dialog.querySelector('[name="temperature"]').value = String(config.temperature);
     dialog.querySelector('[name="timeoutSec"]').value = String(config.timeoutSec);
     dialog.querySelector('[name="autoExtract"]').checked = Boolean(config.autoExtract);
+    dialog.querySelector('[name="thinking"]').checked = Boolean(config.thinking);
   }
 
   function readSettings(dialog) {
@@ -4303,6 +4392,7 @@ if (typeof module === "object") {
       temperature: dialog.querySelector('[name="temperature"]').value,
       timeoutSec: dialog.querySelector('[name="timeoutSec"]').value,
       autoExtract: dialog.querySelector('[name="autoExtract"]').checked,
+      thinking: dialog.querySelector('[name="thinking"]').checked,
     };
   }
 
@@ -4340,6 +4430,7 @@ if (typeof module === "object") {
         <label>Таймаут, с <input name="timeoutSec" type="number" min="10" max="600" /></label>
       </div>
       <label class="pyr-check"><input name="autoExtract" type="checkbox" /> Использовать Readability</label>
+      <label class="pyr-check"><input name="thinking" type="checkbox" /> Режим размышлений (DeepSeek, медленнее)</label>
       <div class="pyr-presets">
         <button type="button" data-preset="deepseek">DeepSeek</button>
         <button type="button" data-preset="openai">OpenAI</button>

@@ -174,3 +174,17 @@ test('untrusted hotkey events are ignored', () => {
   assert.equal(h.api.isPanelOpen(), false);
   h.window.__PYRAMID_TEST_HOOK__ = true;
 });
+
+test('settings expose the thinking toggle and persist it', () => {
+  const h = loadUserscript();
+  h.api.init();
+  h.api.openSettings();
+  const dlg = root(h).querySelector('#pyr-settings');
+  const box = dlg.querySelector('input[name="thinking"]');
+  assert.ok(box);
+  assert.equal(box.checked, false);
+
+  box.checked = true;
+  dlg.querySelector('button[data-action="save"]').click();
+  assert.equal(h.api.loadConfig().thinking, true);
+});
