@@ -222,3 +222,37 @@ test('resize handle supports keyboard adjustment', () => {
   handle.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
   assert.equal(q(h, '.panel').style.getPropertyValue('--pyr-width'), '600px');
 });
+
+test('rebuild control is an icon button with an accessible name', () => {
+  const h = loadUserscript();
+  h.api.openPanel();
+  const btn = q(h, 'button[data-action="rebuild"]');
+
+  assert.ok(btn);
+  assert.equal(btn.textContent.trim().length <= 2, true, 'button shows a glyph, not a sentence');
+  assert.equal(btn.getAttribute('aria-label'), 'Перестроить пирамиду');
+  assert.equal(btn.getAttribute('title'), 'Перестроить пирамиду');
+  assert.doesNotMatch(btn.textContent, /Перестроить/);
+});
+
+test('the icon rebuild button still triggers a rebuild', () => {
+  const h = loadUserscript();
+  h.api.openPanel();
+  let calls = 0;
+  h.api.onRebuild(() => {
+    calls += 1;
+  });
+  const btn = q(h, 'button[data-action="rebuild"]');
+  btn.click();
+  assert.equal(calls, 1);
+  assert.equal(btn.disabled, false);
+});
+
+test('the icon rebuild button is disabled while a request runs', () => {
+  const h = loadUserscript();
+  h.api.openPanel();
+  h.api.setPanelState('requesting', { seconds: 1 });
+  const btn = q(h, 'button[data-action="rebuild"]');
+  assert.equal(btn.disabled, true);
+  assert.equal(btn.getAttribute('aria-label'), 'Перестроить пирамиду');
+});

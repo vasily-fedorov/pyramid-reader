@@ -3735,6 +3735,14 @@ if (typeof module === "object") {
     }
     .pyr-focus-bar input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
     .pyr-focus-bar button { white-space: nowrap; }
+    .pyr-focus-bar .pyr-icon-btn {
+      flex: 0 0 auto;
+      width: 32px;
+      padding: 4px 0;
+      font-size: 16px;
+      line-height: 1.2;
+      text-align: center;
+    }
     .pyr-focus-bar button:disabled, .pyr-focus-bar input:disabled { opacity: 0.55; cursor: default; }
     .pyr-note {
       padding: 0 14px;
@@ -3868,7 +3876,7 @@ if (typeof module === "object") {
       </header>
       <div class="pyr-focus-bar">
         <input id="pyr-focus" type="text" placeholder="фокус, например: только архитектура" aria-label="Фокус" />
-        <button type="button" data-action="rebuild">Перестроить пирамиду</button>
+        <button type="button" data-action="rebuild" class="pyr-icon-btn" title="Перестроить пирамиду" aria-label="Перестроить пирамиду">↻</button>
         <button type="button" data-action="cancel" hidden>Отменить</button>
       </div>
       <div class="pyr-note" id="pyr-note"></div>
