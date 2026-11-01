@@ -1,5 +1,9 @@
 # Pyramid Reader
 
+[![Установить](https://img.shields.io/badge/%D1%83%D1%81%D1%82%D0%B0%D0%BD%D0%BE%D0%B2%D0%B8%D1%82%D1%8C-userscript-blue)](https://raw.githubusercontent.com/vasily-fedorov/websum/main/pyramid.user.js)
+[![Тесты](https://img.shields.io/badge/tests-192-brightgreen)](https://github.com/vasily-fedorov/websum)
+[![Лицензия](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 Юзерскрипт, который превращает длинную статью в многоуровневую «пирамиду
 знаний» в боковой панели: краткая суть → 3–5 главных тем → подтезисы →
 атомарные факты, цифры и цитаты.
@@ -44,20 +48,32 @@
 ### Violentmonkey (рекомендуется)
 
 Открытый исходный код, работает в Chrome, Yandex Browser, Firefox, Edge и Brave.
+[Chrome Web Store](https://chromewebstore.google.com/detail/violentmonkey/jinjaccalgkegednnccohejagnlnfdag)
+· [Firefox Add-ons](https://addons.mozilla.org/firefox/addon/violentmonkey/)
+· [исходники](https://github.com/violentmonkey/violentmonkey).
 
-1. Установите расширение:
-   [Chrome Web Store](https://chromewebstore.google.com/detail/violentmonkey/jinjaccalgkegednnccohejagnlnfdag)
-   · [Firefox Add-ons](https://addons.mozilla.org/firefox/addon/violentmonkey/)
-   · [исходники](https://github.com/violentmonkey/violentmonkey).
-2. Иконка Violentmonkey → «Создать новый скрипт».
-3. Вставьте содержимое `pyramid.user.js` целиком вместо шаблона, сохраните
-   (`Ctrl+S`).
-4. Откройте любую статью и нажмите `Alt+P`.
+1. Поставьте расширение, если его ещё нет.
+2. Откройте [`pyramid.user.js`](https://raw.githubusercontent.com/vasily-fedorov/websum/main/pyramid.user.js)
+   — Violentmonkey сам предложит установку. Нажмите «Установить».
+3. Откройте любую статью и нажмите `Alt+P`.
 
 ### Tampermonkey
 
 То же самое: [tampermonkey.net](https://www.tampermonkey.net/) → «Создать новый
-скрипт» → вставить файл → сохранить.
+скрипт» → вставить файл → сохранить. Либо открыть ссылку на `pyramid.user.js`
+из шапки этого README — Tampermonkey перехватит её так же.
+
+### Обновления
+
+В шапке скрипта прописаны `@updateURL` и `@downloadURL` на `main` этого
+репозитория, поэтому менеджер сам предложит обновление после новой версии.
+Обновляться вручную из файла не нужно.
+
+### Если ставили вручную раньше
+
+При переходе на версию 1.1 сменились `@namespace` и `@name`, поэтому менеджер
+считает скрипт новым. Удалите старый экземпляр из списка скриптов, иначе рядом
+будут два.
 
 ### Проверка, что скрипт жив
 
@@ -238,7 +254,7 @@
 
 ```bash
 npm install
-npm test        # 186 тестов на node:test + jsdom
+npm test        # 192 теста на node:test + jsdom
 ```
 
 Стенд без трат токенов:
@@ -312,6 +328,8 @@ npm test
 ## Лицензия
 
 Код скрипта распространяется по MIT — см. [`LICENSE`](LICENSE).
+
+Репозиторий: [github.com/vasily-fedorov/websum](https://github.com/vasily-fedorov/websum).
 
 Встроенная [Readability](https://github.com/mozilla/readability) —
 Apache-2.0, заголовок лицензии сохранён в `vendor/Readability.js`.

@@ -1,8 +1,13 @@
 // ==UserScript==
-// @name         AI Multi-level Artifact Pyramid Reader
-// @namespace    http://tampermonkey.net
-// @version      1.0
-// @description  Генерация многоуровневой пирамиды тезисов по горячим клавишам
+// @name         Pyramid Reader
+// @namespace    https://github.com/vasily-fedorov/websum
+// @version      1.1.0
+// @description  Пирамида тезисов по тексту статьи: суть, темы, факты, с переходом к источнику
+// @author       vasily-fedorov
+// @homepageURL  https://github.com/vasily-fedorov/websum
+// @supportURL   https://github.com/vasily-fedorov/websum/issues
+// @updateURL    https://raw.githubusercontent.com/vasily-fedorov/websum/main/pyramid.user.js
+// @downloadURL  https://raw.githubusercontent.com/vasily-fedorov/websum/main/pyramid.user.js
 // @match        http://*/*
 // @match        https://*/*
 // @grant        GM_xmlhttpRequest

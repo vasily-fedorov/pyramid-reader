@@ -479,14 +479,20 @@ form`, элементы управления, классы `.cookie/.newsletter/
 ## 7. Структура файла
 
 Один файл, секции по порядку:
-1. Заголовок `==UserScript==` (дословно из ТЗ плюс два гранта из §6.5):
+1. Заголовок `==UserScript==` (гранты из ТЗ плюс два из §6.5, плюс метаданные
+   репозитория):
 
 ```javascript
 // ==UserScript==
-// @name         AI Multi-level Artifact Pyramid Reader
-// @namespace    http://tampermonkey.net
-// @version      1.0
-// @description  Генерация многоуровневой пирамиды тезисов по горячим клавишам
+// @name         Pyramid Reader
+// @namespace    https://github.com/vasily-fedorov/websum
+// @version      1.1.0
+// @description  Пирамида тезисов по тексту статьи: суть, темы, факты, с переходом к источнику
+// @author       vasily-fedorov
+// @homepageURL  https://github.com/vasily-fedorov/websum
+// @supportURL   https://github.com/vasily-fedorov/websum/issues
+// @updateURL    https://raw.githubusercontent.com/vasily-fedorov/websum/main/pyramid.user.js
+// @downloadURL  https://raw.githubusercontent.com/vasily-fedorov/websum/main/pyramid.user.js
 // @match        http://*/*
 // @match        https://*/*
 // @grant        GM_xmlhttpRequest
@@ -503,6 +509,15 @@ form`, элементы управления, классы `.cookie/.newsletter/
 `@connect *` обязателен: `apiBase` задаётся пользователем, включая
 `http://localhost:11434/v1` для Ollama. Без него менеджер молча блокирует
 запрос.
+
+`@namespace` — URL репозитория, а не менеджера: идентичность скрипта в
+менеджере складывается из `@namespace` + `@name`, и общий namespace с другим
+скриптом приводил бы к конфликту обновлений. Смена `@namespace`/`@name` в
+версии 1.1 означает для уже установленного экземпляра новый скрипт, поэтому
+старый нужно удалить вручную.
+
+`@updateURL`/`@downloadURL` смотрят на `main`, поэтому после первой публикации
+менеджер обновляет скрипт сам.
 
 2. `CONFIG` — дефолты.
 3. Инлайн Readability (или собственный экстрактор).
