@@ -1,24 +1,45 @@
 # AI Multi-level Artifact Pyramid Reader
 
-Юзерскрипт для Tampermonkey / Violentmonkey: по `Ctrl+Shift+P` (`Cmd+Shift+P` на
-Mac) читает текст открытой статьи, отправляет его в OpenAI-совместимый API и
-показывает в правой панели многоуровневую «пирамиду знаний» — executive summary,
-3–5 главных тем, подтезисы и атомарные факты в основании.
+Юзерскрипт для [Violentmonkey](https://violentmonkey.github.io/) и
+[Tampermonkey](https://www.tampermonkey.net/): по `Alt+P` читает текст открытой
+статьи, отправляет его в OpenAI-совместимый API и показывает в правой панели
+многоуровневую «пирамиду знаний» — executive summary, 3–5 главных тем,
+подтезисы и атомарные факты в основании.
 
 Работает на любом сайте: текст извлекается через Readability, без правил под
 конкретные домены.
 
 ## Установка
 
-1. Поставьте [Tampermonkey](https://www.tampermonkey.net/) или
-   [Violentmonkey](https://violentmonkey.github.io/).
-2. Откройте панель менеджера → «Создать новый скрипт».
-3. Вставьте содержимое `pyramid.user.js` целиком и сохраните.
-4. Откройте любую статью и нажмите `Ctrl+Shift+P`.
+Рекомендуемый менеджер — **Violentmonkey**: открытый исходный код, работает в
+Chrome, Yandex Browser, Firefox, Edge и Brave. Tampermonkey тоже подходит.
+
+### Violentmonkey
+
+1. Поставьте расширение:
+   [Chrome Web Store](https://chromewebstore.google.com/detail/violentmonkey/jinjaccalgkegednnccohejagnlnfdag)
+   · [Firefox Add-ons](https://addons.mozilla.org/firefox/addon/violentmonkey/)
+   · [исходники](https://github.com/violentmonkey/violentmonkey).
+2. Иконка Violentmonkey → «Создать новый скрипт».
+3. Вставьте содержимое `pyramid.user.js` целиком вместо шаблона и нажмите
+   `Ctrl+S` (или «Сохранить»).
+4. Откройте любую статью и нажмите `Alt+P`.
+
+### Tampermonkey
+
+То же самое: [tampermonkey.net](https://www.tampermonkey.net/) → «Создать новый
+скрипт» → вставить файл → сохранить. Отдельных настроек не требуется.
+
+### Проверка, что скрипт жив
+
+На открытой странице иконка менеджера показывает скрипт в списке для текущего
+сайта (`@match http://*/*` и `https://*/*`, то есть везде). Если список пуст —
+скрипт не установился или страница открыта до установки: перезагрузите её.
 
 ## Настройка
 
-Меню менеджера скриптов → «Настройки» (или шестерёнка в шапке панели).
+Иконка менеджера → меню скрипта → «Настройки» (или шестерёнка в шапке панели).
+В Violentmonkey команды скрипта лежат в подменю под его названием.
 
 По умолчанию — DeepSeek: `https://api.deepseek.com`, модель `deepseek-flash`.
 Ключ вставляется в поле `Ключ API` (скрытое поле) и хранится в `GM_setValue`.
