@@ -4,12 +4,12 @@
 [![Тесты](https://img.shields.io/badge/tests-205-brightgreen)](https://github.com/vasily-fedorov/pyramid-reader)
 [![Лицензия](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-![Pyramid Reader: панель с пирамидой открыта рядом со статьёй](docs/assets/screenshot.png)
+![Pyramid Reader: панель с пирамидой открыта рядом со статьёй; клик по тезису подсветил место в статье](docs/assets/screenshot.png)
 
 <details>
-<summary>Запись работы: открытие панели, вопрос «как установить», построение пирамиды</summary>
+<summary>Запись работы: вопрос в поле фокуса, генерация пирамиды, переход к цитате</summary>
 
-![Демонстрация: Alt+P, вопрос в поле фокуса, генерация пирамиды](docs/assets/demo.gif)
+![Демонстрация: вопрос «как установить», стриминг пирамиды, клик по тезису и подсветка в статье](docs/assets/demo.gif)
 
 </details>
 
