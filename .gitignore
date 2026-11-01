@@ -1,3 +1,7 @@
 node_modules/
 .superpowers/
 .omo/
+.DS_Store
+Thumbs.db
+*.log
+coverage/
