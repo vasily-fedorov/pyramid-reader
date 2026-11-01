@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const REPO = 'https://github.com/vasily-fedorov/websum';
-const RAW = 'https://raw.githubusercontent.com/vasily-fedorov/websum/main/pyramid.user.js';
+const REPO = 'https://github.com/vasily-fedorov/pyramid-reader';
+const RAW = 'https://raw.githubusercontent.com/vasily-fedorov/pyramid-reader/main/pyramid.user.js';
 
 const script = fs.readFileSync(new URL('../pyramid.user.js', import.meta.url), 'utf8');
 const header = script.slice(0, script.indexOf('==/UserScript=='));
@@ -52,4 +52,12 @@ test('grants cover storage, menu and cross-origin requests', () => {
 test('the script declares a version and runs after the page is idle', () => {
   assert.match(field('version'), /^\d+\.\d+\.\d+$/);
   assert.equal(field('run-at'), 'document-idle');
+});
+
+test('the script stays out of iframes', () => {
+  assert.ok(header.includes('// @noframes'), 'missing @noframes');
+});
+
+test('no reference to the old repository name remains', () => {
+  assert.doesNotMatch(script, /websum/);
 });

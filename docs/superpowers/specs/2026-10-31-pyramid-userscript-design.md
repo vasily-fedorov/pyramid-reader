@@ -485,16 +485,17 @@ form`, элементы управления, классы `.cookie/.newsletter/
 ```javascript
 // ==UserScript==
 // @name         Pyramid Reader
-// @namespace    https://github.com/vasily-fedorov/websum
-// @version      1.1.0
+// @namespace    https://github.com/vasily-fedorov/pyramid-reader
+// @version      1.1.1
 // @description  Пирамида тезисов по тексту статьи: суть, темы, факты, с переходом к источнику
 // @author       vasily-fedorov
-// @homepageURL  https://github.com/vasily-fedorov/websum
-// @supportURL   https://github.com/vasily-fedorov/websum/issues
-// @updateURL    https://raw.githubusercontent.com/vasily-fedorov/websum/main/pyramid.user.js
-// @downloadURL  https://raw.githubusercontent.com/vasily-fedorov/websum/main/pyramid.user.js
+// @homepageURL  https://github.com/vasily-fedorov/pyramid-reader
+// @supportURL   https://github.com/vasily-fedorov/pyramid-reader/issues
+// @updateURL    https://raw.githubusercontent.com/vasily-fedorov/pyramid-reader/main/pyramid.user.js
+// @downloadURL  https://raw.githubusercontent.com/vasily-fedorov/pyramid-reader/main/pyramid.user.js
 // @match        http://*/*
 // @match        https://*/*
+// @noframes
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -518,6 +519,10 @@ form`, элементы управления, классы `.cookie/.newsletter/
 
 `@updateURL`/`@downloadURL` смотрят на `main`, поэтому после первой публикации
 менеджер обновляет скрипт сам.
+
+`@noframes` обязателен: без него при фокусе внутри `iframe` (встроенное видео,
+песочница с кодом) пирамида строилась бы по содержимому фрейма, а панель
+появлялась бы внутри него. Скрипт живёт только в верхнем документе.
 
 2. `CONFIG` — дефолты.
 3. Инлайн Readability (или собственный экстрактор).

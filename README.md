@@ -1,7 +1,7 @@
 # Pyramid Reader
 
-[![Установить](https://img.shields.io/badge/%D1%83%D1%81%D1%82%D0%B0%D0%BD%D0%BE%D0%B2%D0%B8%D1%82%D1%8C-userscript-blue)](https://raw.githubusercontent.com/vasily-fedorov/websum/main/pyramid.user.js)
-[![Тесты](https://img.shields.io/badge/tests-192-brightgreen)](https://github.com/vasily-fedorov/websum)
+[![Установить](https://img.shields.io/badge/%D1%83%D1%81%D1%82%D0%B0%D0%BD%D0%BE%D0%B2%D0%B8%D1%82%D1%8C-userscript-blue)](https://raw.githubusercontent.com/vasily-fedorov/pyramid-reader/main/pyramid.user.js)
+[![Тесты](https://img.shields.io/badge/tests-194-brightgreen)](https://github.com/vasily-fedorov/pyramid-reader)
 [![Лицензия](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 Юзерскрипт, который превращает длинную статью в многоуровневую «пирамиду
@@ -40,6 +40,8 @@
 - **Светлая и тёмная тема** по `prefers-color-scheme`.
 - **Изоляция:** closed shadow root — стили сайта не ломают панель, скрипты
   сайта её не читают.
+- **Только верхний фрейм.** `@noframes`: скрипт не грузится во встроенных
+  iframe, поэтому панель всегда одна на страницу.
 
 ## Установка
 
@@ -53,7 +55,7 @@
 · [исходники](https://github.com/violentmonkey/violentmonkey).
 
 1. Поставьте расширение, если его ещё нет.
-2. Откройте [`pyramid.user.js`](https://raw.githubusercontent.com/vasily-fedorov/websum/main/pyramid.user.js)
+2. Откройте [`pyramid.user.js`](https://raw.githubusercontent.com/vasily-fedorov/pyramid-reader/main/pyramid.user.js)
    — Violentmonkey сам предложит установку. Нажмите «Установить».
 3. Откройте любую статью и нажмите `Alt+P`.
 
@@ -72,8 +74,9 @@
 ### Если ставили вручную раньше
 
 При переходе на версию 1.1 сменились `@namespace` и `@name`, поэтому менеджер
-считает скрипт новым. Удалите старый экземпляр из списка скриптов, иначе рядом
-будут два.
+считает скрипт новым. Удалите старый экземпляр («AI Multi-level Artifact
+Pyramid Reader») из списка скриптов, иначе рядом будут два и оба будут
+перехватывать `Alt+P`.
 
 ### Проверка, что скрипт жив
 
@@ -254,7 +257,7 @@
 
 ```bash
 npm install
-npm test        # 192 теста на node:test + jsdom
+npm test        # 194 теста на node:test + jsdom
 ```
 
 Стенд без трат токенов:
@@ -329,7 +332,7 @@ npm test
 
 Код скрипта распространяется по MIT — см. [`LICENSE`](LICENSE).
 
-Репозиторий: [github.com/vasily-fedorov/websum](https://github.com/vasily-fedorov/websum).
+Репозиторий: [github.com/vasily-fedorov/pyramid-reader](https://github.com/vasily-fedorov/pyramid-reader).
 
 Встроенная [Readability](https://github.com/mozilla/readability) —
 Apache-2.0, заголовок лицензии сохранён в `vendor/Readability.js`.
