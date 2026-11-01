@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pyramid Reader
 // @namespace    https://github.com/vasily-fedorov/pyramid-reader
-// @version      1.2.0
+// @version      1.2.1
 // @description  Пирамида тезисов по тексту статьи: суть, темы, факты, с переходом к источнику
 // @author       vasily-fedorov
 // @homepageURL  https://github.com/vasily-fedorov/pyramid-reader
@@ -879,19 +879,57 @@
     return null;
   }
 
+  function indexTokens(tokens) {
+    const index = new Map();
+    for (let position = 0; position < tokens.length; position += 1) {
+      const word = tokens[position].word;
+      const bucket = index.get(word);
+      if (bucket) bucket.push(position);
+      else index.set(word, [position]);
+    }
+    return index;
+  }
+
+  function matchIndexed(tokens, index, target) {
+    const starts = index.get(target[0]);
+    if (!starts) return null;
+
+    for (let attempt = 0; attempt < starts.length; attempt += 1) {
+      const start = starts[attempt];
+      if (start + target.length > tokens.length) continue;
+
+      let matched = true;
+      for (let offset = 1; offset < target.length; offset += 1) {
+        if (tokens[start + offset].word !== target[offset]) {
+          matched = false;
+          break;
+        }
+      }
+      if (matched) return { from: start, to: start + target.length - 1 };
+    }
+
+    return null;
+  }
+
+  function findLongestRun(tokens, index, target) {
+    for (let length = target.length; length >= SOURCE_MIN_FALLBACK_TOKENS; length -= 1) {
+      const lastStart = target.length - length;
+      for (let start = 0; start <= lastStart; start += 1) {
+        const run = matchIndexed(tokens, index, target.slice(start, start + length));
+        if (run) return run;
+      }
+    }
+    return null;
+  }
+
   function findArticleMatch(citation) {
     const target = wordsOf(citation);
-    if (target.length === 0) return null;
+    if (target.length < SOURCE_MIN_FALLBACK_TOKENS) return null;
 
     const tokens = collectSourceTokens(document.body);
     if (tokens.length === 0) return null;
 
-    let run = matchTokenRun(tokens, target);
-
-    for (let length = target.length - 1; !run && length >= SOURCE_MIN_FALLBACK_TOKENS; length -= 1) {
-      run = matchTokenRun(tokens, target.slice(0, length));
-    }
-
+    const run = findLongestRun(tokens, indexTokens(tokens), target);
     if (!run) return null;
 
     const first = tokens[run.from];

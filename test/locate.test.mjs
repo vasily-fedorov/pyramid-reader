@@ -102,3 +102,24 @@ test('a click that finds nothing leaves a transient note', () => {
   h.api.__root.querySelector('li').click();
   assert.match(h.api.__root.querySelector('#pyr-note').textContent, /не наш[её]л/i);
 });
+
+test('finds the article when the model paraphrases the start of the citation', () => {
+  const h = boot();
+  const hit = h.api.findArticleMatch(
+    'Установка требует менеджера юзерскриптов, поэтому микрозадачи выполняются раньше макрозадач',
+  );
+  assert.ok(hit, 'an interior matching run must be found');
+  assert.match(hit.element.textContent, /Микрозадачи выполняются раньше/);
+});
+
+test('an interior run of three words is enough', () => {
+  const h = boot();
+  const hit = h.api.findArticleMatch('совершенно другой текст про микрозадачи выполняются раньше и прочее');
+  assert.ok(hit);
+  assert.match(hit.element.textContent, /Микрозадачи выполняются раньше макрозадач/);
+});
+
+test('two matching words are not enough to jump', () => {
+  const h = boot();
+  assert.equal(h.api.findArticleMatch('макрозадач совершенно'), null);
+});
