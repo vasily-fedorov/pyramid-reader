@@ -49,11 +49,17 @@ test('org export uses org headings, lists and src blocks', () => {
   assert.match(org, /#\+begin_quote\nцитата\n#\+end_quote/);
 });
 
-test('export produces a dated slug filename', () => {
+test('export produces a transliterated dated slug filename', () => {
   const h = loadUserscript();
   h.document.title = 'Как работает Event Loop!';
-  assert.equal(h.api.exportFilename('md'), 'kak-rabotaet-event-loop-2026-10-31.md');
-  assert.equal(h.api.exportFilename('org'), 'kak-rabotaet-event-loop-2026-10-31.org');
+  assert.match(h.api.exportFilename('md'), /^kak-rabotaet-event-loop-\d{4}-\d{2}-\d{2}\.md$/);
+  assert.match(h.api.exportFilename('org'), /^kak-rabotaet-event-loop-\d{4}-\d{2}-\d{2}\.org$/);
+});
+
+test('a title with no latin or cyrillic letters still yields a filename', () => {
+  const h = loadUserscript();
+  h.document.title = '!!! ???';
+  assert.match(h.api.exportFilename('md'), /^pyramid-\d{4}-\d{2}-\d{2}\.md$/);
 });
 
 test('export buttons are disabled until a pyramid is rendered', () => {
