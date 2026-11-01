@@ -25,7 +25,7 @@ const sse = (t) => `data: ${JSON.stringify({ choices: [{ delta: { content: t } }
 
 test('renders a cached pyramid without touching the API', () => {
   const { api, captured } = setup();
-  api.putCached('https://example.com/a', api.__extractText(), '', '<h3>cached</h3>');
+  api.putCached('https://example.com/a', api.__extractText(), '', '<h3>cached</h3>', 'auto');
   api.runPyramid();
   assert.equal(captured.length, 0);
   assert.match(api.__root.querySelector('#pyr-content').innerHTML, /cached/);
@@ -110,7 +110,7 @@ test('successful run stores the answer in the cache for the same focus', () => {
   captured[0].onload({
     responseText: `data: ${JSON.stringify({ choices: [{ delta: { content: '<p>done</p>' } }] })}\n\ndata: [DONE]\n\n`,
   });
-  assert.match(api.getCached('https://example.com/a', text, 'arch').html, /done/);
+  assert.match(api.getCached('https://example.com/a', text, 'arch', 'auto').html, /done/);
 });
 
 test('short extracted text shows the not-an-article warning', () => {
@@ -122,7 +122,7 @@ test('short extracted text shows the not-an-article warning', () => {
 test('rebuild bypasses the cache and calls the API', () => {
   const { api, captured } = setup();
   api.init();
-  api.putCached('https://example.com/a', api.__extractText(), '', '<h3>cached</h3>');
+  api.putCached('https://example.com/a', api.__extractText(), '', '<h3>cached</h3>', 'auto');
   api.runPyramid();
   assert.equal(captured.length, 0);
   api.__root.querySelector('button[data-action="rebuild"]').click();
@@ -131,7 +131,7 @@ test('rebuild bypasses the cache and calls the API', () => {
 
 test('a stale throttle timer from an aborted run cannot overwrite the next run', async () => {
   const { api, captured } = setup();
-  api.putCached('https://example.com/a', api.__extractText(), '', '<h3>B</h3>');
+  api.putCached('https://example.com/a', api.__extractText(), '', '<h3>B</h3>', 'auto');
 
   api.runPyramid({ force: true });
   captured[0].onprogress({ responseText: sse('<h3>A</h3>') });
@@ -164,4 +164,18 @@ test('extraction note priorities', () => {
   assert.match(api.buildNote({ truncated: false, text: long, originalLength: 500, short: false, usedReadability: false }, true), /Readability/i);
   assert.equal(api.buildNote({ truncated: false, text: long, originalLength: 500, short: false, usedReadability: true }, true), '');
   assert.equal(api.buildNote({ truncated: false, text: long, originalLength: 500, short: false, usedReadability: false }, false), '');
+});
+
+test('the chosen language reaches the system prompt', () => {
+  const { api, captured } = setup({ store: { 'pyr.config': { language: 'en' } } });
+  api.runPyramid({ force: true });
+  const body = JSON.parse(captured[0].data);
+  assert.match(body.messages[0].content, /на английском языке/);
+});
+
+test('changing the language does not serve the other language from cache', () => {
+  const { api, captured } = setup();
+  api.putCached('https://example.com/a', api.__extractText(), '', '<h3>cached</h3>', 'ru');
+  api.runPyramid({ force: false, language: undefined });
+  assert.equal(captured.length, 1, 'auto must not read the ru cache entry');
 });

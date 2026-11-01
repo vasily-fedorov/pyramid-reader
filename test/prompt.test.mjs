@@ -72,3 +72,39 @@ test('prompt asks for a verbatim data-src citation on every thesis and fact', ()
   assert.match(p, /дословн/i);
   assert.match(p, /5-12 слов/);
 });
+
+test('auto language keeps the language-of-the-article instruction', () => {
+  const p = loadUserscript().api.buildSystemPrompt('', 'auto');
+  assert.match(p, /на языке статьи/);
+  assert.doesNotMatch(p, /на русском языке/);
+  assert.doesNotMatch(p, /на английском языке/);
+});
+
+test('russian language is requested explicitly', () => {
+  const p = loadUserscript().api.buildSystemPrompt('', 'ru');
+  assert.match(p, /на русском языке/);
+  assert.doesNotMatch(p, /на языке статьи/);
+});
+
+test('english language is requested explicitly', () => {
+  const p = loadUserscript().api.buildSystemPrompt('', 'en');
+  assert.match(p, /на английском языке/);
+  assert.doesNotMatch(p, /на языке статьи/);
+});
+
+test('an explicit language overrides the focus tail sentence too', () => {
+  assert.match(loadUserscript().api.buildSystemPrompt('архитектура', 'ru'), /Язык ответа — русский\./);
+  assert.match(loadUserscript().api.buildSystemPrompt('architecture', 'en'), /Язык ответа — английский\./);
+  assert.match(loadUserscript().api.buildSystemPrompt('архитектура', 'auto'), /Язык ответа — язык статьи\./);
+});
+
+test('the default language is auto', () => {
+  const { api } = loadUserscript();
+  assert.equal(api.DEFAULT_CONFIG.language, 'auto');
+  assert.equal(api.loadConfig().language, 'auto');
+});
+
+test('an unknown stored language falls back to auto', () => {
+  const { api } = loadUserscript({ store: { 'pyr.config': { language: 'klingon' } } });
+  assert.equal(api.loadConfig().language, 'auto');
+});

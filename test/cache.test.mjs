@@ -62,3 +62,11 @@ test('clearCache removes cache keys but keeps config', () => {
   api.clearCache();
   assert.deepEqual(api.storageKeys(), ['pyr.config']);
 });
+
+test('cache is separated by pyramid language', () => {
+  const { api } = loadUserscript();
+  api.putCached(URL_, TEXT, '', '<h3>x</h3>', 'ru');
+  assert.equal(api.getCached(URL_, TEXT, '', 'en'), null);
+  assert.equal(api.getCached(URL_, TEXT, '', 'ru').html, '<h3>x</h3>');
+  assert.notEqual(api.cacheKey(URL_, TEXT, '', 'ru'), api.cacheKey(URL_, TEXT, '', 'en'));
+});

@@ -151,8 +151,11 @@
     timeoutSec: 180,
     autoExtract: true,
     thinking: false,
+    language: 'auto',
     hotkeys: defaultHotkeys(),
   };
+
+  const LANGUAGES = ['auto', 'ru', 'en'];
 
   const NUMERIC_LIMITS = {
     maxChars: [1000, 400000],
@@ -253,6 +256,7 @@
       config.thinking = Boolean(merged.thinking);
     }
 
+    config.language = LANGUAGES.indexOf(merged.language) !== -1 ? merged.language : 'auto';
     config.hotkeys = coerceHotkeys(merged.hotkeys);
 
     return config;
@@ -311,8 +315,17 @@
     return hash;
   }
 
-  function cacheKey(url, text, focus) {
-    const body = url + '|' + String(text).length + '|' + String(text).slice(0, 64) + '|' + (focus || '');
+  function cacheKey(url, text, focus, language) {
+    const body =
+      url +
+      '|' +
+      String(text).length +
+      '|' +
+      String(text).slice(0, 64) +
+      '|' +
+      (focus || '') +
+      '|' +
+      (language || '');
     return CACHE_PREFIX + djb2(body).toString(36);
   }
 
@@ -332,8 +345,8 @@
     entries.slice(CACHE_MAX_ENTRIES).forEach((entry) => storageDelete(entry.key));
   }
 
-  function putCached(url, text, focus, html) {
-    const key = cacheKey(url, text, focus);
+  function putCached(url, text, focus, html, language) {
+    const key = cacheKey(url, text, focus, language);
     lastCacheTs = Math.max(Date.now(), lastCacheTs + 1);
     storageSet(key, {
       ts: lastCacheTs,
@@ -343,8 +356,8 @@
     pruneCache();
   }
 
-  function getCached(url, text, focus) {
-    const key = cacheKey(url, text, focus);
+  function getCached(url, text, focus, language) {
+    const key = cacheKey(url, text, focus, language);
     const entry = storageGet(key, null);
 
     if (!entry || typeof entry !== 'object') return null;
@@ -454,10 +467,22 @@
   // Prompt
   // ---------------------------------------------------------------------------
 
-  const BASE_PROMPT = [
-    'Проанализируй текст статьи и сформируй ГЛУБОКУЮ МНОГОУРОВНЕВУЮ Пирамиду Знаний',
-    'на языке статьи (русский текст — по-русски, английский — по-английски, и так',
-    'далее). Используй вложенные HTML-теги <details> и <summary> для',
+  const LANGUAGE_CLAUSES = {
+    auto: 'на языке статьи (русский текст — по-русски, английский — по-английски, и так\nдалее)',
+    ru: 'на русском языке',
+    en: 'на английском языке',
+  };
+
+  const LANGUAGE_ANSWER_TAILS = {
+    auto: 'Язык ответа — язык статьи.',
+    ru: 'Язык ответа — русский.',
+    en: 'Язык ответа — английский.',
+  };
+
+  const BASE_PROMPT_HEAD = 'Проанализируй текст статьи и сформируй ГЛУБОКУЮ МНОГОУРОВНЕВУЮ Пирамиду Знаний';
+
+  const BASE_PROMPT_TAIL = [
+    'Используй вложенные HTML-теги <details> и <summary> для',
     'прогрессивного раскрытия информации. Отвечай ТОЛЬКО чистым HTML-кодом без',
     'markdown-оберток (без ```html).',
     '',
@@ -471,6 +496,13 @@
     '- Уровень 4 (Основание пирамиды): Внутри подтезисов Уровня 3 должны лежать',
     '  атомарные факты, цифры, примеры кода или цитаты в виде списков <ul>/<li>.',
   ].join('\n');
+
+  function basePrompt(language) {
+    const clause = LANGUAGE_CLAUSES[language] || LANGUAGE_CLAUSES.auto;
+    return BASE_PROMPT_HEAD + '\n' + clause + '.\n' + BASE_PROMPT_TAIL;
+  }
+
+  const BASE_PROMPT = basePrompt('auto');
 
   const PROMPT_RULES = [
     'Не используй атрибуты style, class, id, href, src и любые inline-стили.',
@@ -489,14 +521,20 @@
     'Сформируй пирамиду строго относительно следующего предмета интереса пользователя: <текст из поля ввода>',
     '',
     'Если в статье нет материала по этому предмету, так и напиши в Executive',
-    'Summary и не выдумывай факты. Язык ответа — язык статьи.',
+    'Summary и не выдумывай факты. <хвост про язык>',
   ].join('\n');
 
-  function buildSystemPrompt(focus) {
-    const blocks = [BASE_PROMPT, PROMPT_RULES, CITATION_RULES];
+  function buildSystemPrompt(focus, language) {
+    const lang = LANGUAGES.indexOf(language) !== -1 ? language : 'auto';
+    const blocks = [basePrompt(lang), PROMPT_RULES, CITATION_RULES];
     const trimmed = String(focus == null ? '' : focus).trim();
     if (trimmed) {
-      blocks.push(FOCUS_TEMPLATE.replace('<текст из поля ввода>', () => trimmed));
+      blocks.push(
+        FOCUS_TEMPLATE.replace('<текст из поля ввода>', () => trimmed).replace(
+          '<хвост про язык>',
+          () => LANGUAGE_ANSWER_TAILS[lang],
+        ),
+      );
     }
     return blocks.join('\n\n');
   }
@@ -4428,7 +4466,7 @@ if (typeof module === "object") {
     const focus = String(options.focus != null ? options.focus : getFocusValue()).trim();
 
     if (!options.force) {
-      const cached = getCached(location.href, extracted.text, focus);
+      const cached = getCached(location.href, extracted.text, focus, config.language);
       if (cached) {
         setPanelHtml(prepareHtml(cached.html));
         setPanelState('cached');
@@ -4457,7 +4495,7 @@ if (typeof module === "object") {
 
     activeRequest = requestCompletion({
       config,
-      system: buildSystemPrompt(focus),
+      system: buildSystemPrompt(focus, config.language),
       user: buildUserMessage(extracted.text),
 
       onWaiting() {
@@ -4486,7 +4524,7 @@ if (typeof module === "object") {
         stopActiveRequest();
         accumulated = html;
         renderNow();
-        putCached(location.href, extracted.text, focus, html);
+        putCached(location.href, extracted.text, focus, html, config.language);
         setFooter({
           sent: extracted.text.length,
           total: extracted.originalLength,
@@ -4538,6 +4576,7 @@ if (typeof module === "object") {
     dialog.querySelector('[name="timeoutSec"]').value = String(config.timeoutSec);
     dialog.querySelector('[name="autoExtract"]').checked = Boolean(config.autoExtract);
     dialog.querySelector('[name="thinking"]').checked = Boolean(config.thinking);
+    dialog.querySelector('[name="language"]').value = config.language;
     HOTKEY_FIELDS.forEach((field) => {
       const button = dialog.querySelector('[data-hotkey="' + field + '"]');
       if (button) button.textContent = config.hotkeys[field];
@@ -4555,6 +4594,7 @@ if (typeof module === "object") {
       timeoutSec: dialog.querySelector('[name="timeoutSec"]').value,
       autoExtract: dialog.querySelector('[name="autoExtract"]').checked,
       thinking: dialog.querySelector('[name="thinking"]').checked,
+      language: dialog.querySelector('[name="language"]').value,
       hotkeys: readHotkeys(dialog),
     };
   }
@@ -4663,6 +4703,13 @@ if (typeof module === "object") {
       </div>
       <label class="pyr-check"><input name="autoExtract" type="checkbox" /> Использовать Readability</label>
       <label class="pyr-check"><input name="thinking" type="checkbox" /> Режим размышлений (DeepSeek, медленнее)</label>
+      <label>Язык пирамиды
+        <select name="language">
+          <option value="auto">на языке статьи</option>
+          <option value="ru">на русском</option>
+          <option value="en">на английском</option>
+        </select>
+      </label>
       <div class="pyr-presets">
         <button type="button" data-preset="deepseek">DeepSeek</button>
         <button type="button" data-preset="openai">OpenAI</button>

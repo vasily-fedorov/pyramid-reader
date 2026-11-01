@@ -185,3 +185,22 @@ test('settings expose the thinking toggle and persist it', () => {
   dlg.querySelector('button[data-action="save"]').click();
   assert.equal(h.api.loadConfig().thinking, true);
 });
+
+test('settings offer the three pyramid languages and save the choice', () => {
+  const h = loadUserscript();
+  h.api.init();
+  h.api.openSettings();
+  const dlg = root(h).querySelector('#pyr-settings');
+  const select = dlg.querySelector('select[name="language"]');
+
+  assert.ok(select);
+  assert.deepEqual(
+    Array.from(select.options).map((option) => option.value),
+    ['auto', 'ru', 'en'],
+  );
+  assert.equal(select.value, 'auto');
+
+  select.value = 'en';
+  dlg.querySelector('button[data-action="save"]').click();
+  assert.equal(h.api.loadConfig().language, 'en');
+});
