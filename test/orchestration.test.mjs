@@ -170,7 +170,7 @@ test('the chosen language reaches the system prompt', () => {
   const { api, captured } = setup({ store: { 'pyr.config': { language: 'en' } } });
   api.runPyramid({ force: true });
   const body = JSON.parse(captured[0].data);
-  assert.match(body.messages[0].content, /на английском языке/);
+  assert.match(body.messages[0].content, /in English/);
 });
 
 test('changing the language does not serve the other language from cache', () => {

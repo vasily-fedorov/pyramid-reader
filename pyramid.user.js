@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pyramid Reader
 // @namespace    https://github.com/vasily-fedorov/pyramid-reader
-// @version      1.1.1
+// @version      1.2.0
 // @description  Пирамида тезисов по тексту статьи: суть, темы, факты, с переходом к источнику
 // @author       vasily-fedorov
 // @homepageURL  https://github.com/vasily-fedorov/pyramid-reader
@@ -303,6 +303,219 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Localisation
+  // ---------------------------------------------------------------------------
+
+  const HEADINGS = {
+    ru: { summary: 'Резюме', theses: 'Тезисы' },
+    en: { summary: 'Executive Summary', theses: 'Theses' },
+  };
+
+  const UI = {
+    ru: {
+      panelTitle: 'Пирамида знаний',
+      resize: 'Изменить ширину панели',
+      wideExpand: 'Развернуть на весь экран',
+      wideCollapse: 'Свернуть',
+      settings: 'Настройки',
+      close: 'Закрыть',
+      focusPlaceholder: 'фокус, например: только архитектура',
+      focusLabel: 'Фокус',
+      rebuild: 'Перестроить пирамиду',
+      cancel: 'Отменить',
+      sentPreview: 'показать отправленный текст',
+      exportMd: 'Скачать Markdown',
+      exportOrg: 'Скачать Org',
+      states: {
+        idle: '',
+        extracting: 'извлечение…',
+        requesting: 'запрос…',
+        thinking: 'модель думает…',
+        streaming: 'генерация…',
+        done: 'готово',
+        error: 'ошибка',
+        cached: 'из кэша',
+      },
+      seconds: (value) => ' ' + value + ' с',
+      footerSent: (sent, total) => 'отправлено ' + sent + ' из ' + total + ' символов',
+      footerResponse: (chars) => 'ответ: ' + chars + ' символов',
+      footerTokens: (tokens) => 'токенов: ' + tokens,
+      noteTruncated: (sent, total) =>
+        'Текст обрезан, отправлено ' + sent + ' из ' + total + ' символов.',
+      noteShort: 'Похоже, это не статья — текст короткий.',
+      noteNoReadability: 'Readability не выделил статью — отправлен текст страницы.',
+      noteNoMatch: 'Не нашёл это место в статье.',
+      errAuth: 'Неверный ключ API. Откройте настройки и проверьте ключ.',
+      errQuota: 'Закончились токены или превышен лимит запросов.',
+      errNotFound: 'Модель или адрес не найдены. Проверьте apiBase и имя модели.',
+      errNetwork:
+        'Не удалось связаться с API. Проверьте адрес и доступ к нему из браузера.',
+      errBadRequest: (message) =>
+        message ? 'Запрос отклонён: ' + message : 'Запрос отклонён сервером.',
+      errOther: (status, message) =>
+        message ? 'Ошибка API (' + status + '): ' + message : 'Ошибка API (' + status + ').',
+      emptyLength:
+        'Модель израсходовала лимит токенов и не успела выдать ответ. ' +
+        'Увеличьте «Макс. токенов» в настройках или отключите режим размышлений.',
+      emptyFilter:
+        'Ответ заблокирован фильтром содержимого модели. Попробуйте переформулировать фокус.',
+      emptyResources: 'Сервис модели не выделил ресурсы под запрос. Повторите позже.',
+      emptyAborted: 'Сервер прервал генерацию. Повторите запрос.',
+      emptyReasoning:
+        'Модель потратила весь ответ на размышления и не прислала текст. ' +
+        'Увеличьте «Макс. токенов» или отключите режим размышлений в настройках.',
+      emptyPlain: 'Модель вернула пустой ответ.',
+      diaTitle: 'Настройки',
+      apiBase: 'Адрес API',
+      apiKey: 'Ключ API',
+      reveal: 'показать',
+      model: 'Модель',
+      maxChars: 'Макс. символов',
+      maxTokens: 'Макс. токенов',
+      temperature: 'Температура',
+      timeout: 'Таймаут, с',
+      autoExtract: 'Использовать Readability',
+      thinking: 'Режим размышлений (DeepSeek, медленнее)',
+      language: 'Язык пирамиды',
+      langAuto: 'на языке статьи',
+      langRu: 'на русском',
+      langEn: 'на английском',
+      hotkeys: 'Горячие клавиши',
+      hotkeyToggle: 'Открыть/скрыть панель',
+      hotkeyWide: 'Развернуть/свернуть',
+      hotkeyFocus: 'Перейти к полю вопроса',
+      resetHotkeys: 'Сбросить к умолчанию',
+      hotkeyCapturing: 'нажмите…',
+      hotkeyNeedModifier: 'нужен модификатор',
+      hotkeyReserved: (names) =>
+        'Занято браузером: ' + names + '. Комбинация сохранена, но может не сработать.',
+      ollamaHint:
+        'Для Ollama запустите сервер с OLLAMA_ORIGINS=* и адресом http://localhost:11434/v1.',
+      save: 'Сохранить',
+      clearKey: 'Очистить ключ',
+      keySaved: 'ключ сохранён — введите новый, чтобы заменить',
+      keyEmpty: 'ключ не задан',
+    },
+    en: {
+      panelTitle: 'Knowledge Pyramid',
+      resize: 'Resize panel',
+      wideExpand: 'Expand to full screen',
+      wideCollapse: 'Collapse',
+      settings: 'Settings',
+      close: 'Close',
+      focusPlaceholder: 'focus, e.g. architecture only',
+      focusLabel: 'Focus',
+      rebuild: 'Rebuild pyramid',
+      cancel: 'Cancel',
+      sentPreview: 'show the text that was sent',
+      exportMd: 'Download Markdown',
+      exportOrg: 'Download Org',
+      states: {
+        idle: '',
+        extracting: 'extracting…',
+        requesting: 'requesting…',
+        thinking: 'model is thinking…',
+        streaming: 'generating…',
+        done: 'done',
+        error: 'error',
+        cached: 'from cache',
+      },
+      seconds: (value) => ' ' + value + 's',
+      footerSent: (sent, total) => 'sent ' + sent + ' of ' + total + ' characters',
+      footerResponse: (chars) => 'answer: ' + chars + ' characters',
+      footerTokens: (tokens) => 'tokens: ' + tokens,
+      noteTruncated: (sent, total) =>
+        'Text truncated: sent ' + sent + ' of ' + total + ' characters.',
+      noteShort: 'This does not look like an article — the text is short.',
+      noteNoReadability: 'Readability did not find the article — sending the page text.',
+      noteNoMatch: 'Could not find this place in the article.',
+      errAuth: 'Invalid API key. Open settings and check the key.',
+      errQuota: 'Out of tokens or rate limit exceeded.',
+      errNotFound: 'Model or address not found. Check apiBase and the model name.',
+      errNetwork:
+        'Could not reach the API. Check the address and that it is reachable from the browser.',
+      errBadRequest: (message) =>
+        message ? 'Request rejected: ' + message : 'The server rejected the request.',
+      errOther: (status, message) =>
+        message ? 'API error (' + status + '): ' + message : 'API error (' + status + ').',
+      emptyLength:
+        'The model used up the token budget before answering. Raise "Max tokens" in ' +
+        'settings or turn off thinking mode.',
+      emptyFilter:
+        'The answer was blocked by the model content filter. Try rephrasing the focus.',
+      emptyResources: 'The model service did not allocate resources. Try again later.',
+      emptyAborted: 'The server interrupted generation. Retry the request.',
+      emptyReasoning:
+        'The model spent the whole answer on reasoning and sent no text. Raise ' +
+        '"Max tokens" or turn off thinking mode.',
+      emptyPlain: 'The model returned an empty answer.',
+      diaTitle: 'Settings',
+      apiBase: 'API base URL',
+      apiKey: 'API key',
+      reveal: 'show',
+      model: 'Model',
+      maxChars: 'Max characters',
+      maxTokens: 'Max tokens',
+      temperature: 'Temperature',
+      timeout: 'Timeout, s',
+      autoExtract: 'Use Readability',
+      thinking: 'Thinking mode (DeepSeek, slower)',
+      language: 'Pyramid language',
+      langAuto: 'article language',
+      langRu: 'Russian',
+      langEn: 'English',
+      hotkeys: 'Hotkeys',
+      hotkeyToggle: 'Open/close panel',
+      hotkeyWide: 'Expand/collapse',
+      hotkeyFocus: 'Focus the question field',
+      resetHotkeys: 'Reset to defaults',
+      hotkeyCapturing: 'press…',
+      hotkeyNeedModifier: 'modifier required',
+      hotkeyReserved: (names) =>
+        'Taken by the browser: ' + names + '. Saved anyway, but it may not work.',
+      ollamaHint:
+        'For Ollama start the server with OLLAMA_ORIGINS=* and the address http://localhost:11434/v1.',
+      save: 'Save',
+      clearKey: 'Clear key',
+      keySaved: 'key is saved — type a new one to replace it',
+      keyEmpty: 'no key set',
+    },
+  };
+
+  function uiLangFor(config) {
+    return config && config.language === 'en' ? 'en' : 'ru';
+  }
+
+  function uiText(lang) {
+    return UI[lang === 'en' ? 'en' : 'ru'];
+  }
+
+  function detectLang(text) {
+    const sample = String(text == null ? '' : text).slice(0, 4000);
+    const cyrillic = (sample.match(/[\u0400-\u04FF]/g) || []).length;
+    const latin = (sample.match(/[A-Za-z]/g) || []).length;
+
+    if (cyrillic === 0 && latin === 0) return 'auto';
+    return cyrillic > latin ? 'ru' : 'en';
+  }
+
+  function contentLangFor(config, text) {
+    if (config && config.language === 'en') return 'en';
+    if (config && config.language === 'ru') return 'ru';
+    const detected = detectLang(text);
+    if (detected === 'auto') {
+      try {
+        return /^ru\b/i.test(String(globalThis.navigator && globalThis.navigator.language))
+          ? 'ru'
+          : 'en';
+      } catch (error) {
+        return 'ru';
+      }
+    }
+    return detected;
+  }
+
+  // ---------------------------------------------------------------------------
   // Cache
   // ---------------------------------------------------------------------------
 
@@ -473,75 +686,112 @@
   // Prompt
   // ---------------------------------------------------------------------------
 
-  const LANGUAGE_CLAUSES = {
-    auto: 'на языке статьи (русский текст — по-русски, английский — по-английски, и так\nдалее)',
-    ru: 'на русском языке',
-    en: 'на английском языке',
+  const PROMPT_TEMPLATES = {
+    ru: {
+      head:
+        'Проанализируй текст статьи и сформируй ГЛУБОКУЮ МНОГОУРОВНЕВУЮ Пирамиду Знаний',
+      clause: 'на русском языке',
+      body: [
+        'Используй вложенные HTML-теги <details> и <summary> для прогрессивного',
+        'раскрытия информации. Отвечай ТОЛЬКО чистым HTML-кодом без markdown-оберток',
+        '(без ```html).',
+        '',
+        'Структура ответа:',
+        '- <h3>📌 {summary}</h3> + 2-3 предложения сути статьи.',
+        '- <h3>📐 {theses}</h3>',
+        '- Уровень 2: 3-5 главных тем статьи в тегах <details>. Внутри <summary> пиши',
+        '  четкий тезис.',
+        '- Уровень 3 (Вложенный): Внутри каждого тега Уровня 2 должно быть 2-3',
+        '  подтезиса (тоже в тегах <details>).',
+        '- Уровень 4 (Основание пирамиды): Внутри подтезисов Уровня 3 должны лежать',
+        '  атомарные факты, цифры, примеры кода или цитаты в виде списков <ul>/<li>.',
+      ].join('\n'),
+      rules: [
+        'Не используй атрибуты style, class, id, href, src и любые inline-стили.',
+        'Вложенность второго уровня оформляй обычной вложенностью <details>, без',
+        'margin-left. Не выводи ничего, кроме HTML.',
+      ].join('\n'),
+      citation: [
+        'Для каждого <summary> внутри <details> и для каждого <li> добавь атрибут',
+        'data-src с дословной цитатой из статьи (5-12 слов), скопированной символ в',
+        'символ из исходного текста. Цитата должна находиться в статье буквально.',
+        'Других атрибутов не используй.',
+      ].join('\n'),
+      focus: [
+        'Сформируй пирамиду строго относительно следующего предмета интереса пользователя: {focus}',
+        '',
+        'Если в статье нет материала по этому предмету, так и напиши в «{summary}» и не выдумывай факты. {tail}',
+      ].join('\n'),
+      tail: 'На русском.',
+    },
+    en: {
+      head: 'Analyse the article and build a DEEP MULTI-LEVEL Knowledge Pyramid',
+      clause: 'in English',
+      body: [
+        'Use nested HTML tags <details> and <summary> for progressive disclosure.',
+        'Reply with CLEAN HTML only, no markdown fences (no ```html).',
+        '',
+        'Response structure:',
+        '- <h3>📌 {summary}</h3> + 2-3 sentences capturing the gist.',
+        '- <h3>📐 {theses}</h3>',
+        '- Level 2: 3-5 main themes of the article inside <details>. Put a clear',
+        '  thesis in <summary>.',
+        '- Level 3 (nested): inside each Level 2 <details> put 2-3 sub-theses',
+        '  (also inside <details>).',
+        '- Level 4 (pyramid base): inside Level 3 sub-theses put atomic facts,',
+        '  numbers, code samples or quotes as <ul>/<li> lists.',
+      ].join('\n'),
+      rules: [
+        'Do not use style, class, id, href, src attributes or any inline styles.',
+        'Nest the second level with plain <details> nesting, without margin-left.',
+        'Output nothing but HTML.',
+      ].join('\n'),
+      citation: [
+        'For every <summary> inside <details> and for every <li> add a data-src',
+        'attribute with a verbatim quote from the article (5-12 words) copied',
+        'character for character from the source text. The quote must appear in the',
+        'article literally. Do not use any other attributes.',
+      ].join('\n'),
+      focus: [
+        'Build the pyramid strictly around the following subject of interest: {focus}',
+        '',
+        'If the article has no material on this subject, say so in the "{summary}" and',
+        'do not invent facts. {tail}',
+      ].join('\n'),
+      tail: 'In English.',
+    },
   };
 
-  const LANGUAGE_ANSWER_TAILS = {
-    auto: 'Язык ответа — язык статьи.',
-    ru: 'Язык ответа — русский.',
-    en: 'Язык ответа — английский.',
-  };
-
-  const BASE_PROMPT_HEAD = 'Проанализируй текст статьи и сформируй ГЛУБОКУЮ МНОГОУРОВНЕВУЮ Пирамиду Знаний';
-
-  const BASE_PROMPT_TAIL = [
-    'Используй вложенные HTML-теги <details> и <summary> для',
-    'прогрессивного раскрытия информации. Отвечай ТОЛЬКО чистым HTML-кодом без',
-    'markdown-оберток (без ```html).',
-    '',
-    'Структура ответа:',
-    '- <h3>📌 Executive Summary</h3> + 2-3 предложения сути статьи.',
-    '- <h3>📐 Тезисы</h3>',
-    '- Уровень 2: 3-5 главных тем статьи в тегах <details>. Внутри <summary> пиши',
-    '  четкий тезис.',
-    '- Уровень 3 (Вложенный): Внутри каждого тега Уровня 2 должно быть 2-3 подтезиса',
-    '  (тоже в тегах <details>).',
-    '- Уровень 4 (Основание пирамиды): Внутри подтезисов Уровня 3 должны лежать',
-    '  атомарные факты, цифры, примеры кода или цитаты в виде списков <ul>/<li>.',
-  ].join('\n');
-
-  function basePrompt(language) {
-    const clause = LANGUAGE_CLAUSES[language] || LANGUAGE_CLAUSES.auto;
-    return BASE_PROMPT_HEAD + '\n' + clause + '.\n' + BASE_PROMPT_TAIL;
+  function promptTemplate(language) {
+    return PROMPT_TEMPLATES[language === 'en' ? 'en' : 'ru'];
   }
 
-  const BASE_PROMPT = basePrompt('auto');
+  function promptBase(language) {
+    const lang = language === 'en' ? 'en' : 'ru';
+    const tpl = promptTemplate(lang);
+    const body = tpl.body
+      .replace('{summary}', HEADINGS[lang].summary)
+      .replace('{theses}', HEADINGS[lang].theses);
+    return tpl.head + '\n' + tpl.clause + '.\n' + body;
+  }
 
-  const PROMPT_RULES = [
-    'Не используй атрибуты style, class, id, href, src и любые inline-стили.',
-    'Вложенность второго уровня оформляй обычной вложенностью <details>, без',
-    'margin-left. Не выводи ничего, кроме HTML.',
-  ].join('\n');
-
-  const CITATION_RULES = [
-    'Для каждого <summary> внутри <details> и для каждого <li> добавь атрибут',
-    'data-src с дословной цитатой из статьи (5-12 слов), скопированной символ в',
-    'символ из исходного текста. Цитата должна находиться в статье буквально.',
-    'Других атрибутов не используй.',
-  ].join('\n');
-
-  const FOCUS_TEMPLATE = [
-    'Сформируй пирамиду строго относительно следующего предмета интереса пользователя: <текст из поля ввода>',
-    '',
-    'Если в статье нет материала по этому предмету, так и напиши в Executive',
-    'Summary и не выдумывай факты. <хвост про язык>',
-  ].join('\n');
+  const BASE_PROMPT = promptBase('ru');
 
   function buildSystemPrompt(focus, language) {
-    const lang = LANGUAGES.indexOf(language) !== -1 ? language : 'auto';
-    const blocks = [basePrompt(lang), PROMPT_RULES, CITATION_RULES];
+    const lang = language === 'en' ? 'en' : 'ru';
+    const tpl = promptTemplate(lang);
+    const blocks = [promptBase(lang), tpl.rules, tpl.citation];
     const trimmed = String(focus == null ? '' : focus).trim();
+
     if (trimmed) {
       blocks.push(
-        FOCUS_TEMPLATE.replace('<текст из поля ввода>', () => trimmed).replace(
-          '<хвост про язык>',
-          () => LANGUAGE_ANSWER_TAILS[lang],
-        ),
+        tpl.focus
+          .replace('{focus}', () => trimmed)
+          .replace('{summary}', HEADINGS[lang].summary)
+          .replace('{tail}', tpl.tail),
       );
     }
+
     return blocks.join('\n\n');
   }
 
@@ -727,7 +977,7 @@
     if (!citation) return;
 
     if (!jumpToSource(citation)) {
-      setTransientNote('Не нашёл это место в статье.');
+      setTransientNote(uiText(uiLang).noteNoMatch);
     }
   }
 
@@ -3433,21 +3683,14 @@ if (typeof module === "object") {
     };
   }
 
-  function buildNote(extracted, autoExtract) {
+  function buildNote(extracted, autoExtract, language) {
     if (!extracted) return '';
+    const s = uiText(language === 'en' ? 'en' : 'ru');
     if (extracted.truncated) {
-      return (
-        'Текст обрезан, отправлено ' +
-        extracted.text.length +
-        ' из ' +
-        extracted.originalLength +
-        ' символов.'
-      );
+      return s.noteTruncated(extracted.text.length, extracted.originalLength);
     }
-    if (extracted.short) return 'Похоже, это не статья — текст короткий.';
-    if (autoExtract && !extracted.usedReadability) {
-      return 'Readability не выделил статью — отправлен текст страницы.';
-    }
+    if (extracted.short) return s.noteShort;
+    if (autoExtract && !extracted.usedReadability) return s.noteNoReadability;
     return '';
   }
 
@@ -3538,31 +3781,20 @@ if (typeof module === "object") {
     return text.trim().slice(0, 400);
   }
 
-  function parseApiError(status, bodyText) {
+  function parseApiError(status, bodyText, language) {
+    const s = uiText(language === 'en' ? 'en' : 'ru');
     const message = errorMessageOf(bodyText);
     const haystack = message.toLowerCase();
 
-    if (status === 401 || status === 403) {
-      return 'Неверный ключ API. Откройте настройки и проверьте ключ.';
-    }
-
+    if (status === 401 || status === 403) return s.errAuth;
     if (status === 402 || status === 429 || /quota|rate.?limit|insufficient|billing/.test(haystack)) {
-      return 'Закончились токены или превышен лимит запросов.';
+      return s.errQuota;
     }
+    if (status === 404) return s.errNotFound;
+    if (status === 0) return s.errNetwork;
+    if (status === 400) return s.errBadRequest(message);
 
-    if (status === 404) {
-      return 'Модель или адрес не найдены. Проверьте apiBase и имя модели.';
-    }
-
-    if (status === 0) {
-      return 'Не удалось связаться с API. Проверьте адрес и доступ к нему из браузера.';
-    }
-
-    if (status === 400) {
-      return message ? 'Запрос отклонён: ' + message : 'Запрос отклонён сервером.';
-    }
-
-    return message ? 'Ошибка API (' + status + '): ' + message : 'Ошибка API (' + status + ').';
+    return s.errOther(status, message);
   }
 
   // ---------------------------------------------------------------------------
@@ -3590,33 +3822,19 @@ if (typeof module === "object") {
       .join('');
   }
 
-  function describeEmptyAnswer(finishReason, reasoningSeen) {
-    if (finishReason === 'length') {
-      return (
-        'Модель израсходовала лимит токенов и не успела выдать ответ. ' +
-        'Увеличьте «Макс. токенов» в настройках или отключите режим размышлений.'
-      );
-    }
-    if (finishReason === 'content_filter') {
-      return 'Ответ заблокирован фильтром содержимого модели. Попробуйте переформулировать фокус.';
-    }
-    if (finishReason === 'insufficient_system_resource') {
-      return 'Сервис модели не выделил ресурсы под запрос. Повторите позже.';
-    }
-    if (finishReason === 'aborted') {
-      return 'Сервер прервал генерацию. Повторите запрос.';
-    }
-    if (reasoningSeen) {
-      return (
-        'Модель потратила весь ответ на размышления и не прислала текст. ' +
-        'Увеличьте «Макс. токенов» или отключите режим размышлений в настройках.'
-      );
-    }
-    return 'Модель вернула пустой ответ.';
+  function describeEmptyAnswer(finishReason, reasoningSeen, language) {
+    const s = uiText(language === 'en' ? 'en' : 'ru');
+    if (finishReason === 'length') return s.emptyLength;
+    if (finishReason === 'content_filter') return s.emptyFilter;
+    if (finishReason === 'insufficient_system_resource') return s.emptyResources;
+    if (finishReason === 'aborted') return s.emptyAborted;
+    if (reasoningSeen) return s.emptyReasoning;
+    return s.emptyPlain;
   }
 
   function requestCompletion(options) {
     const config = options.config;
+    const uiLanguage = options.lang === 'en' ? 'en' : 'ru';
     const base = String(config.apiBase || '').replace(/\/+$/, '');
 
     const headers = { 'Content-Type': 'application/json' };
@@ -3707,7 +3925,7 @@ if (typeof module === "object") {
         const text = (response && response.responseText) || '';
 
         if (status >= 400) {
-          fail(parseApiError(status, text));
+          fail(parseApiError(status, text, uiLanguage));
           return;
         }
 
@@ -3733,7 +3951,7 @@ if (typeof module === "object") {
         }
 
         if (!accumulated) {
-          fail(describeEmptyAnswer(finishReason, reasoningSeen));
+          fail(describeEmptyAnswer(finishReason, reasoningSeen, uiLanguage));
           return;
         }
 
@@ -3742,11 +3960,11 @@ if (typeof module === "object") {
       },
 
       onerror() {
-        fail(parseApiError(0, 'Ошибка сети'));
+        fail(parseApiError(0, '', uiLanguage));
       },
 
       ontimeout() {
-        fail(parseApiError(0, 'Таймаут'));
+        fail(parseApiError(0, '', uiLanguage));
       },
     });
 
@@ -3768,17 +3986,6 @@ if (typeof module === "object") {
   // ---------------------------------------------------------------------------
 
   const PANEL_ID = 'ai-pyramid-host';
-
-  const STATE_LABELS = {
-    idle: '',
-    extracting: 'извлечение…',
-    requesting: 'запрос…',
-    thinking: 'модель думает…',
-    streaming: 'генерация…',
-    done: 'готово',
-    error: 'ошибка',
-    cached: 'из кэша',
-  };
 
   const BUSY_STATES = new Set(['extracting', 'requesting', 'thinking', 'streaming']);
 
@@ -4087,6 +4294,7 @@ if (typeof module === "object") {
   `;
 
   let panelRefs = null;
+  let uiLang = 'ru';
   let rebuildHandler = null;
   let cancelHandler = null;
   let settingsHandler = null;
@@ -4129,8 +4337,10 @@ if (typeof module === "object") {
       panelRefs.panel.removeAttribute('data-wide');
     }
     if (panelRefs.wide) {
+      const s = uiText(uiLang);
       panelRefs.wide.setAttribute('aria-pressed', panelWide ? 'true' : 'false');
-      panelRefs.wide.title = panelWide ? 'Свернуть' : 'Развернуть';
+      panelRefs.wide.setAttribute('aria-label', panelWide ? s.wideCollapse : s.wideExpand);
+      panelRefs.wide.title = panelWide ? s.wideCollapse : s.wideExpand;
     }
   }
 
@@ -4171,6 +4381,8 @@ if (typeof module === "object") {
       host,
       root,
       panel: pick('.panel'),
+      title: pick('.pyr-title'),
+      sentSummary: pick('#pyr-sent summary'),
       badge: pick('#pyr-state'),
       content: pick('#pyr-content'),
       note: pick('#pyr-note'),
@@ -4191,6 +4403,7 @@ if (typeof module === "object") {
 
     readPanelUi();
     applyPanelUi();
+    applyUiLanguage(loadConfig());
 
     let dragStartX = 0;
     let dragStartWidth = 0;
@@ -4259,6 +4472,32 @@ if (typeof module === "object") {
     return panelRefs;
   }
 
+  function applyUiLanguage(config) {
+    uiLang = uiLangFor(config);
+    const s = uiText(uiLang);
+    if (!panelRefs) return uiLang;
+
+    const r = panelRefs;
+    r.title.textContent = s.panelTitle;
+    r.panel.setAttribute('aria-label', s.panelTitle);
+    r.resize.setAttribute('aria-label', s.resize);
+    r.wide.setAttribute('aria-label', panelWide ? s.wideCollapse : s.wideExpand);
+    r.wide.title = panelWide ? s.wideCollapse : s.wideExpand;
+    r.settings.setAttribute('aria-label', s.settings);
+    r.settings.title = s.settings;
+    r.close.setAttribute('aria-label', s.close);
+    r.close.title = s.close;
+    r.input.placeholder = s.focusPlaceholder;
+    r.input.setAttribute('aria-label', s.focusLabel);
+    r.rebuild.setAttribute('aria-label', s.rebuild);
+    r.rebuild.title = s.rebuild;
+    r.cancel.textContent = s.cancel;
+    r.sentSummary.textContent = s.sentPreview;
+    r.exportMd.title = s.exportMd;
+    r.exportOrg.title = s.exportOrg;
+    return uiLang;
+  }
+
   function isPanelOpen() {
     const host = document.getElementById(PANEL_ID);
     return Boolean(host) && !host.hasAttribute('hidden');
@@ -4282,10 +4521,11 @@ if (typeof module === "object") {
   function setPanelState(state, detail) {
     const refs = ensureHost();
     const options = detail || {};
-    let label = STATE_LABELS[state] || '';
+    const s = uiText(uiLang);
+    let label = (s.states && s.states[state]) || '';
 
     if ((state === 'requesting' || state === 'thinking') && options.seconds != null) {
-      label += ' ' + options.seconds + ' с';
+      label += s.seconds(options.seconds);
     }
 
     refs.badge.textContent = label;
@@ -4380,7 +4620,7 @@ if (typeof module === "object") {
       const button = document.createElement('button');
       button.type = 'button';
       button.dataset.action = 'settings';
-      button.textContent = 'Настройки';
+      button.textContent = uiText(uiLang).settings;
       button.addEventListener('click', () => {
         if (settingsHandler) settingsHandler();
       });
@@ -4392,13 +4632,14 @@ if (typeof module === "object") {
 
   function setFooter(info) {
     const refs = ensureHost();
+    const s = uiText(uiLang);
     const parts = [];
 
     if (typeof info.sent === 'number' && typeof info.total === 'number') {
-      parts.push('отправлено ' + info.sent + ' из ' + info.total + ' символов');
+      parts.push(s.footerSent(info.sent, info.total));
     }
-    if (info.responseChars) parts.push('ответ: ' + info.responseChars + ' символов');
-    if (info.tokens) parts.push('токенов: ' + info.tokens);
+    if (info.responseChars) parts.push(s.footerResponse(info.responseChars));
+    if (info.tokens) parts.push(s.footerTokens(info.tokens));
     if (info.model) parts.push(info.model);
 
     refs.footerText.textContent = parts.join(' · ');
@@ -4455,6 +4696,7 @@ if (typeof module === "object") {
     setPanelHtml('');
 
     const config = loadConfig();
+    applyUiLanguage(config);
     const extracted = currentExtraction();
     if (token !== runSeq) return;
 
@@ -4467,7 +4709,7 @@ if (typeof module === "object") {
     });
     setSentTextPreview(extracted.text);
 
-    setPanelNote(buildNote(extracted, config.autoExtract));
+    setPanelNote(buildNote(extracted, config.autoExtract, uiLang));
 
     const focus = String(options.focus != null ? options.focus : getFocusValue()).trim();
 
@@ -4501,8 +4743,9 @@ if (typeof module === "object") {
 
     activeRequest = requestCompletion({
       config,
-      system: buildSystemPrompt(focus, config.language),
+      system: buildSystemPrompt(focus, contentLangFor(config, extracted.text)),
       user: buildUserMessage(extracted.text),
+      lang: uiLang,
 
       onWaiting() {
         if (token !== runSeq) return;
@@ -4569,11 +4812,10 @@ if (typeof module === "object") {
   let initialized = false;
 
   function fillSettings(dialog, config) {
+    const uiStrings = uiText(uiLang);
     const keyInput = dialog.querySelector('[name="apiKey"]');
     keyInput.value = '';
-    keyInput.placeholder = config.apiKey
-      ? 'ключ сохранён — введите новый, чтобы заменить'
-      : 'ключ не задан';
+    keyInput.placeholder = config.apiKey ? uiStrings.keySaved : uiStrings.keyEmpty;
     dialog.querySelector('[name="apiBase"]').value = config.apiBase;
     dialog.querySelector('[name="model"]').value = config.model;
     dialog.querySelector('[name="maxChars"]').value = String(config.maxChars);
@@ -4624,7 +4866,7 @@ if (typeof module === "object") {
       return;
     }
     const names = reserved.map((field) => hotkeys[field]).join(', ');
-    warning.textContent = 'Занято браузером: ' + names + '. Комбинация сохранена, но может не сработать.';
+    warning.textContent = uiText(uiLang).hotkeyReserved(names);
   }
 
   function stopHotkeyCapture() {
@@ -4639,7 +4881,7 @@ if (typeof module === "object") {
     stopHotkeyCapture();
     capturingHotkey = button;
     button.dataset.capturing = '1';
-    button.textContent = 'нажмите…';
+    button.textContent = uiText(uiLang).hotkeyCapturing;
 
     if (!hotkeyCaptureHandler) {
       hotkeyCaptureHandler = (event) => {
@@ -4654,7 +4896,7 @@ if (typeof module === "object") {
 
         const combo = eventToCombo(event);
         if (!combo || !isUsableCombo(combo)) {
-          capturingHotkey.textContent = 'нужен модификатор';
+          capturingHotkey.textContent = uiText(uiLang).hotkeyNeedModifier;
           return;
         }
 
@@ -4685,35 +4927,37 @@ if (typeof module === "object") {
 
     const dialog = document.createElement('div');
     dialog.id = 'pyr-settings';
+    const s = uiText(uiLang);
+
     dialog.innerHTML = `
-      <h2>Настройки</h2>
-      <label>Адрес API
+      <h2>${s.diaTitle}</h2>
+      <label>${s.apiBase}
         <input name="apiBase" type="text" spellcheck="false" />
       </label>
-      <label>Ключ API
+      <label>${s.apiKey}
         <span class="pyr-key-row">
-          <input name="apiKey" type="password" autocomplete="off" spellcheck="false" />
-          <button type="button" data-action="reveal">показать</button>
+          <input name="apiKey" type="password" autocomplete="new-password" data-1p-ignore="true" data-lpignore="true" spellcheck="false" />
+          <button type="button" data-action="reveal">${s.reveal}</button>
         </span>
       </label>
-      <label>Модель
+      <label>${s.model}
         <input name="model" type="text" spellcheck="false" />
       </label>
       <div class="pyr-row">
-        <label>Макс. символов <input name="maxChars" type="number" min="1000" max="400000" /></label>
-        <label>Макс. токенов <input name="maxTokens" type="number" min="256" max="32000" /></label>
+        <label>${s.maxChars} <input name="maxChars" type="number" min="1000" max="400000" /></label>
+        <label>${s.maxTokens} <input name="maxTokens" type="number" min="256" max="32000" /></label>
       </div>
       <div class="pyr-row">
-        <label>Температура <input name="temperature" type="number" min="0" max="2" step="0.1" /></label>
-        <label>Таймаут, с <input name="timeoutSec" type="number" min="10" max="600" /></label>
+        <label>${s.temperature} <input name="temperature" type="number" min="0" max="2" step="0.1" /></label>
+        <label>${s.timeout} <input name="timeoutSec" type="number" min="10" max="600" /></label>
       </div>
-      <label class="pyr-check"><input name="autoExtract" type="checkbox" /> Использовать Readability</label>
-      <label class="pyr-check"><input name="thinking" type="checkbox" /> Режим размышлений (DeepSeek, медленнее)</label>
-      <label>Язык пирамиды
+      <label class="pyr-check"><input name="autoExtract" type="checkbox" /> ${s.autoExtract}</label>
+      <label class="pyr-check"><input name="thinking" type="checkbox" /> ${s.thinking}</label>
+      <label>${s.language}
         <select name="language">
-          <option value="auto">на языке статьи</option>
-          <option value="ru">на русском</option>
-          <option value="en">на английском</option>
+          <option value="auto">${s.langAuto}</option>
+          <option value="ru">${s.langRu}</option>
+          <option value="en">${s.langEn}</option>
         </select>
       </label>
       <div class="pyr-presets">
@@ -4723,24 +4967,24 @@ if (typeof module === "object") {
         <button type="button" data-preset="ollama">Ollama</button>
       </div>
       <fieldset class="pyr-hotkeys">
-        <legend>Горячие клавиши</legend>
-        <label>Открыть/скрыть панель
+        <legend>${s.hotkeys}</legend>
+        <label>${s.hotkeyToggle}
           <button type="button" data-hotkey="toggle"></button>
         </label>
-        <label>Развернуть/свернуть
+        <label>${s.hotkeyWide}
           <button type="button" data-hotkey="wide"></button>
         </label>
-        <label>Перейти к полю вопроса
+        <label>${s.hotkeyFocus}
           <button type="button" data-hotkey="focus"></button>
         </label>
-        <button type="button" data-action="resetHotkeys">Сбросить к умолчанию</button>
+        <button type="button" data-action="resetHotkeys">${s.resetHotkeys}</button>
         <p class="pyr-hint" id="pyr-hotkey-warning"></p>
       </fieldset>
-      <p class="pyr-hint">Для Ollama запустите сервер с OLLAMA_ORIGINS=* и адресом http://localhost:11434/v1.</p>
+      <p class="pyr-hint">${s.ollamaHint}</p>
       <div class="pyr-actions">
-        <button type="button" data-action="save">Сохранить</button>
-        <button type="button" data-action="clearKey">Очистить ключ</button>
-        <button type="button" data-action="close">Закрыть</button>
+        <button type="button" data-action="save">${s.save}</button>
+        <button type="button" data-action="clearKey">${s.clearKey}</button>
+        <button type="button" data-action="close">${s.close}</button>
       </div>
     `;
 
@@ -4753,9 +4997,10 @@ if (typeof module === "object") {
       const patch = readSettings(dialog);
       const typed = dialog.querySelector('[name="apiKey"]').value.trim();
       if (typed) patch.apiKey = typed;
-      saveConfig(patch);
+      const saved = saveConfig(patch);
       invalidateHotkeys();
       closeSettings();
+      applyUiLanguage(saved);
     });
     dialog.querySelector('button[data-action="clearKey"]').addEventListener('click', () => {
       saveConfig({ apiKey: '' });
@@ -4941,10 +5186,16 @@ if (typeof module === "object") {
       exportPyramid,
       downloadPyramid,
       BASE_PROMPT,
-      PROMPT_RULES,
-      FOCUS_TEMPLATE,
+      PROMPT_TEMPLATES,
+      HEADINGS,
+      UI,
+      uiLangFor,
+      uiText,
+      promptBase,
       buildSystemPrompt,
       buildUserMessage,
+      detectLang,
+      contentLangFor,
       MIN_ARTICLE_CHARS,
       SHORT_TEXT_CHARS,
       htmlToPlainText,
@@ -4966,6 +5217,7 @@ if (typeof module === "object") {
       applyViewState,
       setPanelWidth,
       togglePanelWide,
+      applyUiLanguage,
       getFocusValue,
       setFocusValue,
       onRebuild,
