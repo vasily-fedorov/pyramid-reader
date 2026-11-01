@@ -21,8 +21,7 @@ test('hotkey opens the panel', () => {
     new h.window.KeyboardEvent('keydown', {
       key: 'p',
       code: 'KeyP',
-      ctrlKey: true,
-      shiftKey: true,
+      altKey: true,
       bubbles: true,
     }),
   );
@@ -37,8 +36,7 @@ test('hotkey is ignored while typing in a page input', () => {
     new h.window.KeyboardEvent('keydown', {
       key: 'p',
       code: 'KeyP',
-      ctrlKey: true,
-      shiftKey: true,
+      altKey: true,
       bubbles: true,
     }),
   );
@@ -53,8 +51,7 @@ test('hotkey toggles the panel closed', () => {
       new h.window.KeyboardEvent('keydown', {
         key: 'p',
         code: 'KeyP',
-        ctrlKey: true,
-        shiftKey: true,
+        altKey: true,
         bubbles: true,
       }),
     );

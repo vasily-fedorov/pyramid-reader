@@ -24,6 +24,123 @@
 
   const CONFIG_KEY = 'pyr.config';
 
+  const HOTKEY_FIELDS = ['toggle', 'wide', 'focus'];
+  const MODIFIER_ORDER = ['Ctrl', 'Alt', 'Shift', 'Meta'];
+
+  const RESERVED_COMBOS = [
+    'Ctrl+P', 'Ctrl+S', 'Ctrl+F', 'Ctrl+T', 'Ctrl+W', 'Ctrl+N', 'Ctrl+O',
+    'Ctrl+Shift+P', 'Ctrl+Shift+I', 'Ctrl+Shift+J', 'Ctrl+Shift+C',
+    'Ctrl+Shift+N', 'Ctrl+Shift+T', 'Ctrl+Shift+W', 'Ctrl+Shift+Q',
+    'F5', 'F11', 'F12',
+  ];
+
+  function isMacPlatform() {
+    try {
+      const nav = globalThis.navigator || {};
+      return /Mac|iPhone|iPad|iPod/i.test(String(nav.platform || '') + ' ' + String(nav.userAgent || ''));
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function defaultHotkeys() {
+    const mod = isMacPlatform() ? 'Ctrl+Alt' : 'Alt';
+    return {
+      toggle: mod + '+P',
+      wide: mod + '+M',
+      focus: mod + '+Q',
+    };
+  }
+
+  function normalizeKeyName(key) {
+    const raw = String(key == null ? '' : key).trim();
+    if (!raw) return '';
+    if (/^F([1-9]|1[0-9]|2[0-4])$/i.test(raw)) return raw.toUpperCase();
+    if (raw.length === 1) return raw.toUpperCase();
+    return raw;
+  }
+
+  function comboParts(combo) {
+    const raw = String(combo == null ? '' : combo)
+      .split('+')
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    if (raw.length === 0) return null;
+
+    const key = normalizeKeyName(raw[raw.length - 1]);
+    const mods = raw.slice(0, -1);
+    if (!key) return null;
+    if (mods.length === 0 && !/^F([1-9]|1[0-9]|2[0-4])$/.test(key)) return null;
+    if (!mods.every((mod) => MODIFIER_ORDER.indexOf(mod) !== -1)) return null;
+    if (new Set(mods).size !== mods.length) return null;
+
+    return { key, mods };
+  }
+
+  function canonicalCombo(combo) {
+    const parsed = comboParts(combo);
+    if (!parsed) return '';
+    const mods = MODIFIER_ORDER.filter((mod) => parsed.mods.indexOf(mod) !== -1);
+    return mods.concat(parsed.key).join('+');
+  }
+
+  function isUsableCombo(combo) {
+    const parsed = comboParts(combo);
+    if (!parsed) return false;
+    if (parsed.mods.some((mod) => mod === 'Ctrl' || mod === 'Alt' || mod === 'Meta')) return true;
+    return /^F([1-9]|1[0-9]|2[0-4])$/.test(parsed.key);
+  }
+
+  function isReservedCombo(combo) {
+    return RESERVED_COMBOS.indexOf(canonicalCombo(combo)) !== -1;
+  }
+
+  function keyNameOf(event) {
+    const code = String(event.code || '');
+
+    if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+    if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+    if (/^Numpad[0-9]$/.test(code)) return 'Num' + code.slice(6);
+    if (/^F([1-9]|1[0-9]|2[0-4])$/.test(code)) return code;
+    if (
+      /^(Escape|Space|Tab|Enter|Backspace|Delete|Insert|Home|End|PageUp|PageDown|ArrowUp|ArrowDown|ArrowLeft|ArrowRight)$/.test(
+        code,
+      )
+    ) {
+      return code;
+    }
+
+    return normalizeKeyName(event.key);
+  }
+
+  function eventToCombo(event) {
+    const key = keyNameOf(event);
+    if (!key) return '';
+
+    const mods = [];
+    if (event.ctrlKey) mods.push('Ctrl');
+    if (event.altKey) mods.push('Alt');
+    if (event.shiftKey) mods.push('Shift');
+    if (event.metaKey) mods.push('Meta');
+    mods.push(key);
+
+    return mods.join('+');
+  }
+
+  function coerceHotkeys(raw) {
+    const defaults = defaultHotkeys();
+    const source = raw && typeof raw === 'object' ? raw : {};
+    const out = {};
+
+    HOTKEY_FIELDS.forEach((field) => {
+      const value = typeof source[field] === 'string' ? source[field].trim() : '';
+      out[field] = isUsableCombo(value) ? canonicalCombo(value) : defaults[field];
+    });
+
+    return out;
+  }
+
   const DEFAULT_CONFIG = {
     apiBase: 'https://api.deepseek.com',
     apiKey: '',
@@ -34,6 +151,7 @@
     timeoutSec: 180,
     autoExtract: true,
     thinking: false,
+    hotkeys: defaultHotkeys(),
   };
 
   const NUMERIC_LIMITS = {
@@ -134,6 +252,8 @@
     } else {
       config.thinking = Boolean(merged.thinking);
     }
+
+    config.hotkeys = coerceHotkeys(merged.hotkeys);
 
     return config;
   }
@@ -3862,6 +3982,33 @@ if (typeof module === "object") {
     #pyr-settings .pyr-presets { display: flex; flex-wrap: wrap; gap: 6px; }
     #pyr-settings .pyr-hint { color: var(--muted); font-size: 11.5px; margin: 0; }
     #pyr-settings .pyr-actions { display: flex; gap: 8px; margin-top: 4px; }
+    #pyr-settings .pyr-hotkeys {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin: 0;
+    }
+    #pyr-settings .pyr-hotkeys legend { padding: 0 4px; color: var(--muted); font-size: 12px; }
+    #pyr-settings .pyr-hotkeys label {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--fg);
+    }
+    #pyr-settings .pyr-hotkeys button[data-hotkey] {
+      min-width: 96px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+    #pyr-settings .pyr-hotkeys button[data-hotkey][data-capturing] {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    #pyr-settings .pyr-hotkeys button[data-action="resetHotkeys"] { align-self: flex-start; }
   `;
 
   const PANEL_HTML = `
@@ -3900,6 +4047,8 @@ if (typeof module === "object") {
   let cancelHandler = null;
   let settingsHandler = null;
   let lastRenderedHtml = '';
+  let capturingHotkey = null;
+  let hotkeyCaptureHandler = null;
   let panelWidth = null;
   let panelWide = false;
 
@@ -4058,7 +4207,7 @@ if (typeof module === "object") {
     document.addEventListener(
       'keydown',
       (event) => {
-        if (event.key === 'Escape' && isPanelOpen()) closePanel();
+        if (event.key === 'Escape' && !capturingHotkey && isPanelOpen()) closePanel();
       },
       true,
     );
@@ -4389,6 +4538,11 @@ if (typeof module === "object") {
     dialog.querySelector('[name="timeoutSec"]').value = String(config.timeoutSec);
     dialog.querySelector('[name="autoExtract"]').checked = Boolean(config.autoExtract);
     dialog.querySelector('[name="thinking"]').checked = Boolean(config.thinking);
+    HOTKEY_FIELDS.forEach((field) => {
+      const button = dialog.querySelector('[data-hotkey="' + field + '"]');
+      if (button) button.textContent = config.hotkeys[field];
+    });
+    updateHotkeyWarning(dialog, config.hotkeys);
   }
 
   function readSettings(dialog) {
@@ -4401,7 +4555,77 @@ if (typeof module === "object") {
       timeoutSec: dialog.querySelector('[name="timeoutSec"]').value,
       autoExtract: dialog.querySelector('[name="autoExtract"]').checked,
       thinking: dialog.querySelector('[name="thinking"]').checked,
+      hotkeys: readHotkeys(dialog),
     };
+  }
+
+  function readHotkeys(dialog) {
+    const hotkeys = defaultHotkeys();
+    HOTKEY_FIELDS.forEach((field) => {
+      const button = dialog.querySelector('[data-hotkey="' + field + '"]');
+      const value = button ? (button.dataset.value || button.textContent || '').trim() : '';
+      hotkeys[field] = isUsableCombo(value) ? canonicalCombo(value) : DEFAULT_CONFIG.hotkeys[field];
+    });
+    return hotkeys;
+  }
+
+  function updateHotkeyWarning(dialog, hotkeys) {
+    const warning = dialog.querySelector('#pyr-hotkey-warning');
+    if (!warning) return;
+    const reserved = HOTKEY_FIELDS.filter((field) => isReservedCombo(hotkeys[field]));
+    if (reserved.length === 0) {
+      warning.textContent = '';
+      return;
+    }
+    const names = reserved.map((field) => hotkeys[field]).join(', ');
+    warning.textContent = 'Занято браузером: ' + names + '. Комбинация сохранена, но может не сработать.';
+  }
+
+  function stopHotkeyCapture() {
+    if (!capturingHotkey) return;
+    const button = capturingHotkey;
+    capturingHotkey = null;
+    button.removeAttribute('data-capturing');
+    button.textContent = button.dataset.value || '';
+  }
+
+  function startHotkeyCapture(dialog, button, field) {
+    stopHotkeyCapture();
+    capturingHotkey = button;
+    button.dataset.capturing = '1';
+    button.textContent = 'нажмите…';
+
+    if (!hotkeyCaptureHandler) {
+      hotkeyCaptureHandler = (event) => {
+        if (!capturingHotkey) return;
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (event.key === 'Escape' || event.code === 'Escape') {
+          stopHotkeyCapture();
+          return;
+        }
+
+        const combo = eventToCombo(event);
+        if (!combo || !isUsableCombo(combo)) {
+          capturingHotkey.textContent = 'нужен модификатор';
+          return;
+        }
+
+        const canonical = canonicalCombo(combo);
+        capturingHotkey.dataset.value = canonical;
+        capturingHotkey.textContent = canonical;
+        stopHotkeyCapture();
+
+        if (dialog) {
+          const hotkeys = readHotkeys(dialog);
+          hotkeys[field] = canonical;
+          updateHotkeyWarning(dialog, hotkeys);
+        }
+      };
+    }
+
+    panelRefs.root.addEventListener('keydown', hotkeyCaptureHandler, true);
   }
 
   function openSettings() {
@@ -4445,6 +4669,20 @@ if (typeof module === "object") {
         <button type="button" data-preset="openrouter">OpenRouter</button>
         <button type="button" data-preset="ollama">Ollama</button>
       </div>
+      <fieldset class="pyr-hotkeys">
+        <legend>Горячие клавиши</legend>
+        <label>Открыть/скрыть панель
+          <button type="button" data-hotkey="toggle"></button>
+        </label>
+        <label>Развернуть/свернуть
+          <button type="button" data-hotkey="wide"></button>
+        </label>
+        <label>Перейти к полю вопроса
+          <button type="button" data-hotkey="focus"></button>
+        </label>
+        <button type="button" data-action="resetHotkeys">Сбросить к умолчанию</button>
+        <p class="pyr-hint" id="pyr-hotkey-warning"></p>
+      </fieldset>
       <p class="pyr-hint">Для Ollama запустите сервер с OLLAMA_ORIGINS=* и адресом http://localhost:11434/v1.</p>
       <div class="pyr-actions">
         <button type="button" data-action="save">Сохранить</button>
@@ -4463,6 +4701,7 @@ if (typeof module === "object") {
       const typed = dialog.querySelector('[name="apiKey"]').value.trim();
       if (typed) patch.apiKey = typed;
       saveConfig(patch);
+      invalidateHotkeys();
       closeSettings();
     });
     dialog.querySelector('button[data-action="clearKey"]').addEventListener('click', () => {
@@ -4473,6 +4712,27 @@ if (typeof module === "object") {
     dialog.querySelector('button[data-action="reveal"]').addEventListener('click', () => {
       const input = dialog.querySelector('[name="apiKey"]');
       input.type = input.type === 'password' ? 'text' : 'password';
+    });
+
+    HOTKEY_FIELDS.forEach((field) => {
+      const button = dialog.querySelector('[data-hotkey="' + field + '"]');
+      if (!button) return;
+      button.dataset.value = button.textContent.trim();
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        startHotkeyCapture(dialog, button, field);
+      });
+    });
+
+    dialog.querySelector('button[data-action="resetHotkeys"]').addEventListener('click', () => {
+      const defaults = defaultHotkeys();
+      HOTKEY_FIELDS.forEach((field) => {
+        const button = dialog.querySelector('[data-hotkey="' + field + '"]');
+        if (!button) return;
+        button.dataset.value = defaults[field];
+        button.textContent = defaults[field];
+      });
+      updateHotkeyWarning(dialog, defaults);
     });
 
     PRESETS.forEach((preset) => {
@@ -4492,30 +4752,76 @@ if (typeof module === "object") {
   }
 
   function isInsidePanel(event) {
-    if (!panelRefs) return false;
+    if (!panelRefs || !panelRefs.host) return false;
     const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
-    return path.indexOf(panelRefs.host) !== -1;
+    if (path.indexOf(panelRefs.host) !== -1) return true;
+    const target = event.target;
+    return Boolean(target) && panelRefs.host.contains(target);
   }
 
   function isTypingTarget(event) {
-    if (isInsidePanel(event)) return true;
     const target = event.target;
     if (!target || target.nodeType !== 1) return false;
     const tag = target.tagName;
     return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable === true;
   }
 
-  function handleHotkey(event) {
-    const isHotkey = (event.ctrlKey || event.metaKey) && event.shiftKey && event.code === 'KeyP';
-    if (!isHotkey) return;
-    if (!event.isTrusted && !globalThis.__PYRAMID_TEST_HOOK__) return;
-    if (isTypingTarget(event)) return;
-    event.preventDefault();
+  let cachedHotkeys = null;
+
+  function currentHotkeys() {
+    if (!cachedHotkeys) cachedHotkeys = loadConfig().hotkeys;
+    return cachedHotkeys;
+  }
+
+  function invalidateHotkeys() {
+    cachedHotkeys = null;
+  }
+
+  function togglePanelFromHotkey() {
     if (isPanelOpen()) {
       closePanel();
-    } else {
-      runPyramid();
+      return;
     }
+    openPanel();
+    if (!lastRenderedHtml) runPyramid();
+  }
+
+  function toggleWideFromHotkey() {
+    if (!isPanelOpen()) openPanel();
+    togglePanelWide();
+  }
+
+  function focusQuestionFromHotkey() {
+    if (!isPanelOpen()) openPanel();
+    const refs = ensureHost();
+    refs.input.focus();
+    refs.input.select();
+  }
+
+  function handleHotkey(event) {
+    if (capturingHotkey) return;
+    if (!event.isTrusted && !globalThis.__PYRAMID_TEST_HOOK__) return;
+
+    const combo = eventToCombo(event);
+    if (!combo) return;
+
+    const hotkeys = currentHotkeys();
+    let action = null;
+
+    if (combo === canonicalCombo(hotkeys.toggle)) {
+      action = togglePanelFromHotkey;
+    } else if (combo === canonicalCombo(hotkeys.wide)) {
+      action = toggleWideFromHotkey;
+    } else if (combo === canonicalCombo(hotkeys.focus)) {
+      action = focusQuestionFromHotkey;
+    }
+
+    if (!action) return;
+    if (!isInsidePanel(event) && isTypingTarget(event)) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    action();
   }
 
   function init() {
@@ -4543,6 +4849,14 @@ if (typeof module === "object") {
       CONFIG_KEY,
       DEFAULT_CONFIG,
       NUMERIC_LIMITS,
+      DEFAULT_HOTKEYS: defaultHotkeys(),
+      HOTKEY_FIELDS,
+      eventToCombo,
+      canonicalCombo,
+      isUsableCombo,
+      isReservedCombo,
+      defaultHotkeys,
+      invalidateHotkeys,
       loadConfig,
       saveConfig,
       storageGet,
